@@ -82,6 +82,52 @@ class VW_Parts_Manager {
     if ( empty( $column ) ) {
         $wpdb->query( "ALTER TABLE {$table_name} ADD COLUMN notes text" );
     }
+   // --- ADD: PO number generator ---
+function vwpm_generate_po_number() {
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+
+    // Next sequence using max(id)+1
+    $next_id = $wpdb->get_var( "SELECT COALESCE(MAX(id),0) + 1 FROM {$table_pos}" );
+    $site = get_bloginfo('name');
+    $sitecode = strtoupper( preg_replace('/[^A-Z]/', '', substr($site, 0, 2) ) );
+    if ( empty($sitecode) ) $sitecode = 'PX';
+
+    $seq = str_pad( $next_id, 4, '0', STR_PAD_LEFT );
+    return 'PO-' . $sitecode . $seq;
+}
+// --- END ADD --- 
+
+    // --- ADD: create POs table ---
+$table_pos = $wpdb->prefix . 'vwpm_pos';
+$sql_pos = "CREATE TABLE IF NOT EXISTS {$table_pos} (
+    id bigint(20) NOT NULL AUTO_INCREMENT,
+    po_number varchar(50) NOT NULL,
+    user_id bigint(20) NOT NULL,
+    supplier_id bigint(20) DEFAULT 0,
+    supplier_name varchar(255) DEFAULT '',
+    supplier_email varchar(255) DEFAULT '',
+    items longtext DEFAULT NULL,
+    tools longtext DEFAULT NULL,
+    product_summary longtext DEFAULT NULL,
+    total_cost decimal(12,2) DEFAULT 0,
+    status varchar(32) DEFAULT 'prepared',
+    is_locked tinyint(1) DEFAULT 0,
+    created_at datetime DEFAULT CURRENT_TIMESTAMP,
+    updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY po_number_unique (po_number)
+) $charset_collate;";
+
+dbDelta( $sql_pos );
+
+// fallback if needed
+$exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) );
+if ( ! $exists ) {
+    $wpdb->query( $sql_pos );
+}
+// --- END ADD ---
+
 }
     
     public function init() {
@@ -216,6 +262,16 @@ class VW_Parts_Manager {
             'vwpm-import-export',
             array($this, 'render_import_export_page')
         );
+        
+        // Purchase Orders submenu
+add_submenu_page(
+    'vw-parts-manager',
+    'Purchase Orders',
+    'Purchase Orders',
+    'manage_options',
+    'vwpm-purchase-orders',
+    array($this, 'render_purchase_orders_page')
+);
     }
     
       public function enqueue_admin_assets($hook) {
@@ -781,6 +837,10 @@ public function render_production_page() {
 public function render_import_export_page() {
     include VWPM_PLUGIN_DIR . 'includes/admin/import-export.php';
 }
+
+public function render_purchase_orders_page() {
+    include VWPM_PLUGIN_DIR . 'includes/admin/purchase-orders.php';
+}
 }
 new VW_Parts_Manager();
 
@@ -1223,9 +1283,10 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
         $html .= '</tbody></table>';
 
         $html .= '<div style="margin-top:10px;">';
-        $html .= '<button class="button button-primary vwpm-save-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">Save Selection for this Supplier</button> ';
-        $html .= '<a href="' . esc_url( admin_url( 'admin.php?vwpm_print_po=1' ) ) . '" target="_blank" class="button">Print/Save as PDF (current selection)</a>';
-        $html .= '</div>';
+$html .= '<button class="button button-secondary vwpm-create-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">Create PO (persist)</button> ';
+$html .= '<button class="button button-primary vwpm-save-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">Save Selection for this Supplier</button> ';
+$html .= '<a href="' . esc_url( admin_url( 'admin.php?vwpm_print_po=1' ) ) . '" target="_blank" class="button">Print/Save as PDF (current selection)</a>';
+$html .= '</div>';
 
         $html .= '</div>'; // end supplier block
     }
@@ -1724,6 +1785,172 @@ function vwpm_ajax_save_po_selection() {
     if ( empty( $supplier_id ) || ! is_array( $items_raw ) ) {
         wp_send_json_error( array( 'message' => 'Invalid data' ) );
     }
+    
+    // --- ADD: Create PO from current user's transient ---
+add_action( 'wp_ajax_vwpm_create_po_from_transient', 'vwpm_ajax_create_po_from_transient' );
+function vwpm_ajax_create_po_from_transient() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+
+    $user_id = get_current_user_id();
+    $transient = get_transient( 'vwpm_po_' . $user_id );
+    if ( empty( $transient ) || ! is_array( $transient ) ) {
+        wp_send_json_error( array( 'message' => 'No saved PO found for current user. Save selection first.' ) );
+    }
+
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+
+    // If table doesn't exist, return error (migration may not have run)
+    if ( $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) ) != $table_pos ) {
+        wp_send_json_error( array( 'message' => 'PO table not found. Please activate plugin or run migrations.' ) );
+    }
+
+    $supplier_id = isset( $transient['supplier_id'] ) ? intval( $transient['supplier_id'] ) : 0;
+    $supplier_name = sanitize_text_field( $transient['supplier_name'] ?? '' );
+    $supplier_email = sanitize_email( $transient['supplier_email'] ?? '' );
+    $items_json = wp_json_encode( $transient['items'] ?? array() );
+    $tools_json = wp_json_encode( $transient['tools'] ?? array() );
+    $product_summary_json = wp_json_encode( $transient['product_summary'] ?? array() );
+    $total_cost = floatval( $transient['total_cost'] ?? 0 );
+
+    // Generate PO number helper — ensure vwpm_generate_po_number() exists, otherwise fallback
+    if ( function_exists('vwpm_generate_po_number') ) {
+        $po_number = vwpm_generate_po_number();
+    } else {
+        $po_number = 'PO-' . strtoupper( substr( get_bloginfo('name'), 0, 2 ) ) . str_pad( time() % 10000, 4, '0', STR_PAD_LEFT );
+    }
+
+    $inserted = $wpdb->insert(
+        $table_pos,
+        array(
+            'po_number' => $po_number,
+            'user_id' => $user_id,
+            'supplier_id' => $supplier_id,
+            'supplier_name' => $supplier_name,
+            'supplier_email' => $supplier_email,
+            'items' => $items_json,
+            'tools' => $tools_json,
+            'product_summary' => $product_summary_json,
+            'total_cost' => $total_cost,
+            'status' => 'prepared',
+            'is_locked' => 0,
+            'created_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql'),
+        ),
+        array('%s','%d','%d','%s','%s','%s','%s','%f','%s','%d','%s','%s')
+    );
+
+    if ( false === $inserted ) {
+        wp_send_json_error( array( 'message' => 'Failed to create PO. DB error: ' . $wpdb->last_error ) );
+    }
+
+    wp_send_json_success( array( 'message' => 'PO created', 'po_number' => $po_number ) );
+}
+    
+    // --- ADD: Create PO from transient ---
+add_action( 'wp_ajax_vwpm_create_po_from_transient', 'vwpm_ajax_create_po_from_transient' );
+function vwpm_ajax_create_po_from_transient() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+
+    $user_id = get_current_user_id();
+    $transient = get_transient( 'vwpm_po_' . $user_id );
+    if ( empty( $transient ) || ! is_array( $transient ) ) {
+        wp_send_json_error( array( 'message' => 'No saved PO found for current user. Save selection first.' ) );
+    }
+
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+
+    $supplier_id = isset( $transient['supplier_id'] ) ? intval( $transient['supplier_id'] ) : 0;
+    $supplier_name = sanitize_text_field( $transient['supplier_name'] ?? '' );
+    $supplier_email = sanitize_email( $transient['supplier_email'] ?? '' );
+    $items_json = wp_json_encode( $transient['items'] ?? array() );
+    $tools_json = wp_json_encode( $transient['tools'] ?? array() );
+    $product_summary_json = wp_json_encode( $transient['product_summary'] ?? array() );
+    $total_cost = floatval( $transient['total_cost'] ?? 0 );
+
+    $po_number = vwpm_generate_po_number();
+
+    $inserted = $wpdb->insert(
+        $table_pos,
+        array(
+            'po_number' => $po_number,
+            'user_id' => $user_id,
+            'supplier_id' => $supplier_id,
+            'supplier_name' => $supplier_name,
+            'supplier_email' => $supplier_email,
+            'items' => $items_json,
+            'tools' => $tools_json,
+            'product_summary' => $product_summary_json,
+            'total_cost' => $total_cost,
+            'status' => 'prepared',
+            'is_locked' => 0,
+            'created_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql'),
+        ),
+        array('%s','%d','%d','%s','%s','%s','%s','%f','%s','%d','%s','%s')
+    );
+
+    if ( false === $inserted ) {
+        wp_send_json_error( array( 'message' => 'Failed to create PO. DB error: ' . $wpdb->last_error ) );
+    }
+
+    wp_send_json_success( array( 'message' => 'PO created', 'po_number' => $po_number ) );
+}
+// --- END Create PO ---
+
+// --- ADD: Get POs (admin list) ---
+add_action( 'wp_ajax_vwpm_get_pos', 'vwpm_ajax_get_pos' );
+function vwpm_ajax_get_pos() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    if ( ! current_user_can('manage_options') ) {
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+
+    $rows = $wpdb->get_results( "SELECT id, po_number, supplier_name, total_cost, status, is_locked, user_id, created_at, updated_at FROM {$table_pos} ORDER BY created_at DESC" );
+
+    wp_send_json_success( array( 'pos' => $rows ) );
+}
+// --- END Get POs ---
+
+// --- ADD: Update PO status / lock ---
+add_action( 'wp_ajax_vwpm_update_po_status', 'vwpm_ajax_update_po_status' );
+function vwpm_ajax_update_po_status() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    if ( ! current_user_can('manage_options') ) {
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+
+    $po_id = intval( $_POST['po_id'] ?? 0 );
+    $new_status = sanitize_text_field( $_POST['status'] ?? '' );
+    $lock = isset( $_POST['lock'] ) ? intval( $_POST['lock'] ) : null;
+
+    if ( ! $po_id || ! in_array( $new_status, array('prepared','ordered','received','complete','locked') ) ) {
+        wp_send_json_error( array( 'message' => 'Invalid parameters' ) );
+    }
+
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+
+    $data = array( 'status' => $new_status, 'updated_at' => current_time('mysql') );
+    $format = array( '%s', '%s' );
+    if ( null !== $lock ) {
+        $data['is_locked'] = $lock ? 1 : 0;
+        $format[] = '%d';
+    }
+
+    $updated = $wpdb->update( $table_pos, $data, array( 'id' => $po_id ), $format, array('%d') );
+
+    if ( false === $updated ) {
+        wp_send_json_error( array( 'message' => 'DB update failed: ' . $wpdb->last_error ) );
+    }
+
+    wp_send_json_success( array( 'message' => 'PO updated' ) );
+}
+// --- END Update PO ---
 
     $po_items = array();
     $supplier_total = 0.0;
