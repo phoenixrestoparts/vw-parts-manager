@@ -73,6 +73,31 @@ class VW_Parts_Manager {
     
     require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
     dbDelta($sql);
+    
+    // --- ADD: create POs table ---
+$table_pos = $wpdb->prefix . 'vwpm_pos';
+$sql_pos = "CREATE TABLE IF NOT EXISTS {$table_pos} (
+    id bigint(20) NOT NULL AUTO_INCREMENT,
+    po_number varchar(50) NOT NULL,
+    user_id bigint(20) NOT NULL,
+    supplier_id bigint(20) DEFAULT 0,
+    supplier_name varchar(255) DEFAULT '',
+    supplier_email varchar(255) DEFAULT '',
+    items longtext DEFAULT NULL,
+    tools longtext DEFAULT NULL,
+    product_summary longtext DEFAULT NULL,
+    total_cost decimal(12,2) DEFAULT 0,
+    status varchar(32) DEFAULT 'prepared',
+    is_locked tinyint(1) DEFAULT 0,
+    created_at datetime DEFAULT CURRENT_TIMESTAMP,
+    updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    PRIMARY KEY (id),
+    UNIQUE KEY po_number_unique (po_number)
+) $charset_collate;";
+
+require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
+dbDelta( $sql_pos );
+// --- END ADD ---
 
     // Ensure notes column exists (safe for existing installs)
     $column = $wpdb->get_results( $wpdb->prepare(
