@@ -30,7 +30,7 @@ class VW_Parts_Manager {
         add_action('add_meta_boxes', array($this, 'add_product_meta_boxes'));
         add_action('save_post_product', array($this, 'save_product_meta'));
         
-        // AJAX handlers
+        // AJAX handlers (registered once here)
         add_action('wp_ajax_vwpm_calculate_production', 'vwpm_ajax_calculate_production');
         add_action('wp_ajax_vwpm_email_po', 'vwpm_ajax_email_po');
         add_action('wp_ajax_vwpm_import_tools', 'vwpm_ajax_import_tools');
@@ -40,6 +40,7 @@ class VW_Parts_Manager {
         add_action('wp_ajax_vwpm_add_supplier', 'vwpm_ajax_add_supplier');
         add_action('wp_ajax_vwpm_update_supplier', 'vwpm_ajax_update_supplier');
         add_action('wp_ajax_vwpm_delete_supplier', 'vwpm_ajax_delete_supplier');
+        // Note: vwpm_save_po_selection is added later in global scope (so it's available after the file loads)
     }
     
     public function activate() {
@@ -332,7 +333,7 @@ public function output_inline_js() {
     }
     
     
-    
+     
     public function save_tool_meta($post_id) {
         if (!isset($_POST['vwpm_tool_nonce']) || !wp_verify_nonce($_POST['vwpm_tool_nonce'], 'vwpm_tool_meta')) {
             return;
@@ -757,60 +758,6 @@ public function output_inline_js() {
         }
     }
     
-    // Save PO selection from the UI into transient for current user
-add_action( 'wp_ajax_vwpm_save_po_selection', 'vwpm_ajax_save_po_selection' );
-function vwpm_ajax_save_po_selection() {
-    check_ajax_referer( 'vwpm_nonce', 'nonce' );
-
-    $supplier_id = sanitize_text_field( $_POST['supplier_id'] ?? '' );
-    $items_raw = $_POST['items'] ?? array(); // array of { component_id, component_name, component_number, qty, unit_price, supplier_ref }
-    $tools = $_POST['tools'] ?? array();
-    $product_summary = $_POST['products'] ?? array();
-    $type = sanitize_text_field( $_POST['type'] ?? 'manufactured' );
-
-    if ( empty( $supplier_id ) || ! is_array( $items_raw ) ) {
-        wp_send_json_error( array( 'message' => 'Invalid data' ) );
-    }
-
-    // Build PO items
-    $po_items = array();
-    $supplier_total = 0;
-    foreach ( $items_raw as $it ) {
-        $qty = floatval( $it['qty'] ?? 0 );
-        $unit = floatval( $it['unit_price'] ?? 0 );
-        $line = $unit * $qty;
-        $po_items[] = array(
-            'component_name'   => sanitize_text_field( $it['component_name'] ?? '' ),
-            'component_number' => sanitize_text_field( $it['component_number'] ?? '' ),
-            'qty_per_unit'     => isset( $it['qty_per_unit'] ) ? floatval( $it['qty_per_unit'] ) : 1,
-            'total_qty'        => $qty,
-            'unit_price'       => $unit,
-            'line_total'       => $line,
-            'supplier_ref'     => sanitize_text_field( $it['supplier_ref'] ?? '' ),
-        );
-        $supplier_total += $line;
-    }
-
-    // Load supplier from DB if needed
-    global $wpdb;
-    $supplier = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %s", $supplier_id ) );
-
-    $po_data = array(
-        'product_summary' => $product_summary,
-        'supplier_id'     => $supplier_id,
-        'supplier_name'   => $supplier ? $supplier->name : '',
-        'supplier_email'  => $supplier ? $supplier->email : '',
-        'items'           => $po_items,
-        'type'            => $type,
-        'total_cost'      => $supplier_total,
-        'tools'           => $tools,
-    );
-
-    set_transient( 'vwpm_po_' . get_current_user_id(), $po_data, HOUR_IN_SECONDS );
-
-    wp_send_json_success( array( 'message' => 'PO saved' ) );
-}
-    
     
     // Helper function to get suppliers
     private function get_suppliers() {
@@ -900,12 +847,44 @@ function vwpm_handle_print_po() {
     if (!isset($_GET['vwpm_print_po']) || !current_user_can('manage_woocommerce')) {
         return;
     }
-    
+
     $po_data = get_transient('vwpm_po_' . get_current_user_id());
-    if (!$po_data) {
-        wp_die('PO data expired. Please generate the PO again.');
+    if ( ! $po_data || ! is_array( $po_data ) ) {
+        wp_die('PO data expired or invalid. Please generate the PO again.');
     }
-    
+
+    // Normalize fields for backward compatibility
+    $product_name = '';
+    $quantity = '';
+    if ( ! empty( $po_data['product_name'] ) ) {
+        $product_name = $po_data['product_name'];
+        $quantity = isset( $po_data['quantity'] ) ? $po_data['quantity'] : '';
+    } elseif ( ! empty( $po_data['product_summary'] ) && is_array( $po_data['product_summary'] ) ) {
+        $parts = array();
+        $total_units = 0;
+        foreach ( $po_data['product_summary'] as $p ) {
+            $label = '';
+            if ( isset( $p['title'] ) ) {
+                $label = $p['title'];
+            } elseif ( isset( $p['product_id'] ) ) {
+                $post = get_post( intval( $p['product_id'] ) );
+                $label = $post ? $post->post_title : 'Product #' . intval( $p['product_id'] );
+            }
+            $qty = isset( $p['quantity'] ) ? floatval( $p['quantity'] ) : 0;
+            $parts[] = $label . ' x' . number_format( $qty, 2 );
+            $total_units += $qty;
+        }
+        $product_name = implode( ', ', $parts );
+        $quantity = $total_units;
+    }
+
+    // Items array
+    $items = isset( $po_data['items'] ) && is_array( $po_data['items'] ) ? $po_data['items'] : array();
+    $total_cost = isset( $po_data['total_cost'] ) ? floatval( $po_data['total_cost'] ) : 0;
+    $type = isset( $po_data['type'] ) ? $po_data['type'] : 'manufactured';
+    $supplier_name = $po_data['supplier_name'] ?? '';
+    $supplier_email = $po_data['supplier_email'] ?? '';
+
     header('Content-Type: text/html; charset=utf-8');
     ?>
     <!DOCTYPE html>
@@ -928,24 +907,28 @@ function vwpm_handle_print_po() {
     </head>
     <body>
         <button class="print-btn" onclick="window.print()">PRINT / SAVE AS PDF</button>
-        
+
         <h1>Purchase Order</h1>
-        
-        <p><strong>Product:</strong> <?php echo esc_html($po_data['product_name']); ?></p>
-        <p><strong>Quantity:</strong> <?php echo esc_html($po_data['quantity']); ?> units</p>
-        <p><strong>Date:</strong> <?php echo date('d/m/Y H:i'); ?></p>
-        
-        <h2>Supplier: <?php echo esc_html($po_data['supplier_name']); ?></h2>
-        <?php if (!empty($po_data['supplier_email'])): ?>
-            <p><strong>Email:</strong> <?php echo esc_html($po_data['supplier_email']); ?></p>
+
+        <?php if ( $product_name !== '' ): ?>
+            <p><strong>Product(s):</strong> <?php echo esc_html( $product_name ); ?></p>
         <?php endif; ?>
-        
+        <?php if ( $quantity !== '' ): ?>
+            <p><strong>Quantity (total units):</strong> <?php echo esc_html( $quantity ); ?></p>
+        <?php endif; ?>
+        <p><strong>Date:</strong> <?php echo date('d/m/Y H:i'); ?></p>
+
+        <h2>Supplier: <?php echo esc_html( $supplier_name ); ?></h2>
+        <?php if ( ! empty( $supplier_email ) ): ?>
+            <p><strong>Email:</strong> <?php echo esc_html( $supplier_email ); ?></p>
+        <?php endif; ?>
+
         <table>
             <thead>
                 <tr>
                     <th>Item</th>
                     <th>Part Number</th>
-                    <?php if ($po_data['type'] === 'manufactured'): ?>
+                    <?php if ($type === 'manufactured'): ?>
                         <th>Qty Per Unit</th>
                     <?php endif; ?>
                     <th>Total Qty</th>
@@ -954,29 +937,29 @@ function vwpm_handle_print_po() {
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($po_data['items'] as $item): ?>
+                <?php foreach ($items as $item): ?>
                     <tr>
-                        <td><?php echo esc_html($item['component_name']); ?></td>
-                        <td><?php echo esc_html($item['component_number']); ?></td>
-                        <?php if ($po_data['type'] === 'manufactured'): ?>
-                            <td><?php echo number_format($item['qty_per_unit'], 2); ?></td>
+                        <td><?php echo esc_html($item['component_name'] ?? ''); ?></td>
+                        <td><?php echo esc_html($item['component_number'] ?? ''); ?></td>
+                        <?php if ($type === 'manufactured'): ?>
+                            <td><?php echo number_format($item['qty_per_unit'] ?? 0, 2); ?></td>
                         <?php endif; ?>
-                        <td><?php echo number_format($item['total_qty'], 2); ?></td>
-                        <td class="text-right">£<?php echo number_format($item['unit_price'], 2); ?></td>
-                        <td class="text-right">£<?php echo number_format($item['line_total'], 2); ?></td>
+                        <td><?php echo number_format($item['total_qty'] ?? 0, 2); ?></td>
+                        <td class="text-right">£<?php echo number_format($item['unit_price'] ?? 0, 2); ?></td>
+                        <td class="text-right">£<?php echo number_format($item['line_total'] ?? 0, 2); ?></td>
                     </tr>
                 <?php endforeach; ?>
                 <tr class="totals">
-                    <td colspan="<?php echo $po_data['type'] === 'manufactured' ? '5' : '4'; ?>" class="text-right">
+                    <td colspan="<?php echo ($type === 'manufactured') ? '5' : '4'; ?>" class="text-right">
                         <strong>Total:</strong>
                     </td>
                     <td class="text-right">
-                        <strong>£<?php echo number_format($po_data['total_cost'], 2); ?></strong>
+                        <strong>£<?php echo number_format($total_cost, 2); ?></strong>
                     </td>
                 </tr>
             </tbody>
         </table>
-        
+
         <?php if (!empty($po_data['tools'])): ?>
             <h2>Tools Required</h2>
             <table>
@@ -990,15 +973,15 @@ function vwpm_handle_print_po() {
                 <tbody>
                     <?php foreach ($po_data['tools'] as $tool): ?>
                         <tr>
-                            <td><?php echo esc_html($tool['name']); ?></td>
-                            <td><?php echo esc_html($tool['number']); ?></td>
-                            <td><?php echo esc_html($tool['location']); ?></td>
+                            <td><?php echo esc_html($tool['name'] ?? ''); ?></td>
+                            <td><?php echo esc_html($tool['number'] ?? ''); ?></td>
+                            <td><?php echo esc_html($tool['location'] ?? ''); ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
             </table>
         <?php endif; ?>
-        
+
     </body>
     </html>
     <?php
@@ -1007,16 +990,8 @@ function vwpm_handle_print_po() {
 
 
 
-// AJAX Handlers
-add_action('wp_ajax_vwpm_calculate_production', 'vwpm_ajax_calculate_production');
-add_action('wp_ajax_vwpm_email_po', 'vwpm_ajax_email_po');
-add_action('wp_ajax_vwpm_import_tools', 'vwpm_ajax_import_tools');
-add_action('wp_ajax_vwpm_import_components', 'vwpm_ajax_import_components');
-add_action('wp_ajax_vwpm_export_tools', 'vwpm_ajax_export_tools');
-add_action('wp_ajax_vwpm_export_components', 'vwpm_ajax_export_components');
-add_action('wp_ajax_vwpm_add_supplier', 'vwpm_ajax_add_supplier');
-add_action('wp_ajax_vwpm_update_supplier', 'vwpm_ajax_update_supplier');
-add_action('wp_ajax_vwpm_delete_supplier', 'vwpm_ajax_delete_supplier');
+/* AJAX Handlers */
+/* (Note: main handlers were registered in the class constructor above) */
 
 function vwpm_ajax_calculate_production() {
     check_ajax_referer('vwpm_nonce', 'nonce');
@@ -1735,3 +1710,61 @@ function vwpm_ajax_delete_supplier() {
     wp_send_json_success();
 }
 
+/* NEW: Save PO selection (used by batch UI) */
+add_action( 'wp_ajax_vwpm_save_po_selection', 'vwpm_ajax_save_po_selection' );
+function vwpm_ajax_save_po_selection() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+
+    $supplier_id = sanitize_text_field( $_POST['supplier_id'] ?? '' );
+    $items_raw   = $_POST['items'] ?? array();
+    $tools       = $_POST['tools'] ?? array();
+    $products    = $_POST['products'] ?? array();
+    $type        = sanitize_text_field( $_POST['type'] ?? 'manufactured' );
+
+    if ( empty( $supplier_id ) || ! is_array( $items_raw ) ) {
+        wp_send_json_error( array( 'message' => 'Invalid data' ) );
+    }
+
+    $po_items = array();
+    $supplier_total = 0.0;
+    foreach ( $items_raw as $it ) {
+        $qty  = floatval( $it['qty'] ?? 0 );
+        $unit = floatval( $it['unit_price'] ?? 0 );
+        $line = $unit * $qty;
+
+        $po_items[] = array(
+            'component_name'   => sanitize_text_field( $it['component_name'] ?? '' ),
+            'component_number' => sanitize_text_field( $it['component_number'] ?? '' ),
+            'qty_per_unit'     => isset( $it['qty_per_unit'] ) ? floatval( $it['qty_per_unit'] ) : 1,
+            'total_qty'        => $qty,
+            'unit_price'       => $unit,
+            'line_total'       => $line,
+            'supplier_ref'     => sanitize_text_field( $it['supplier_ref'] ?? '' ),
+            'component_id'     => isset( $it['component_id'] ) ? sanitize_text_field( $it['component_id'] ) : '',
+        );
+
+        $supplier_total += $line;
+    }
+
+    // Load supplier details (if available)
+    global $wpdb;
+    $supplier = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %s", $supplier_id ) );
+
+    $po_data = array(
+        'product_summary' => $products,
+        'product_name'    => isset( $products[0]['title'] ) ? sanitize_text_field( $products[0]['title'] ) : '',
+        'quantity'        => isset( $products[0]['quantity'] ) ? floatval( $products[0]['quantity'] ) : 0,
+        'supplier_id'     => $supplier_id,
+        'supplier_name'   => $supplier ? $supplier->name : '',
+        'supplier_email'  => $supplier ? $supplier->email : '',
+        'items'           => $po_items,
+        'type'            => $type,
+        'total_cost'      => $supplier_total,
+        'tools'           => $tools,
+    );
+
+    // store transient per user (used by print handler)
+    set_transient( 'vwpm_po_' . get_current_user_id(), $po_data, HOUR_IN_SECONDS );
+
+    wp_send_json_success( array( 'message' => 'PO saved' ) );
+}
