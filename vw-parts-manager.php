@@ -2052,3 +2052,74 @@ function vwpm_ajax_update_po_status() {
 
     wp_send_json_success( array( 'message' => 'PO saved' ) );
 }
+// --- ADD: PO number generator (if missing) ---
+if (!function_exists('vwpm_generate_po_number')) {
+    function vwpm_generate_po_number() {
+        global $wpdb;
+        $table_pos = $wpdb->prefix . 'vwpm_pos';
+        // Next sequence using max(id)+1 (works even if table empty)
+        $next_id = $wpdb->get_var( "SELECT COALESCE(MAX(id),0) + 1 FROM {$table_pos}" );
+        $site = get_bloginfo('name');
+        $sitecode = strtoupper( preg_replace('/[^A-Z]/', '', substr($site, 0, 2) ) );
+        if ( empty($sitecode) ) $sitecode = 'PX';
+        $seq = str_pad( $next_id, 4, '0', STR_PAD_LEFT );
+        return 'PO-' . $sitecode . $seq;
+    }
+}
+
+// --- ADD: Create PO from current user's transient ---
+add_action( 'wp_ajax_vwpm_create_po_from_transient', 'vwpm_ajax_create_po_from_transient' );
+function vwpm_ajax_create_po_from_transient() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+
+    $user_id = get_current_user_id();
+    $transient = get_transient( 'vwpm_po_' . $user_id );
+    if ( empty( $transient ) || ! is_array( $transient ) ) {
+        wp_send_json_error( array( 'message' => 'No saved PO found for current user. Save selection first.' ) );
+    }
+
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+
+    // Defensive: ensure table exists
+    $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) );
+    if ( ! $exists ) {
+        wp_send_json_error( array( 'message' => 'PO table not found. Run plugin activation to create DB table.' ) );
+    }
+
+    $supplier_id = intval( $transient['supplier_id'] ?? 0 );
+    $supplier_name = sanitize_text_field( $transient['supplier_name'] ?? '' );
+    $supplier_email = sanitize_email( $transient['supplier_email'] ?? '' );
+    $items_json = wp_json_encode( $transient['items'] ?? array() );
+    $tools_json = wp_json_encode( $transient['tools'] ?? array() );
+    $product_summary_json = wp_json_encode( $transient['product_summary'] ?? array() );
+    $total_cost = floatval( $transient['total_cost'] ?? 0 );
+
+    $po_number = vwpm_generate_po_number();
+
+    $inserted = $wpdb->insert(
+        $table_pos,
+        array(
+            'po_number' => $po_number,
+            'user_id' => $user_id,
+            'supplier_id' => $supplier_id,
+            'supplier_name' => $supplier_name,
+            'supplier_email' => $supplier_email,
+            'items' => $items_json,
+            'tools' => $tools_json,
+            'product_summary' => $product_summary_json,
+            'total_cost' => $total_cost,
+            'status' => 'prepared',
+            'is_locked' => 0,
+            'created_at' => current_time('mysql'),
+            'updated_at' => current_time('mysql'),
+        ),
+        array('%s','%d','%d','%s','%s','%s','%s','%f','%s','%d','%s','%s')
+    );
+
+    if ( false === $inserted ) {
+        wp_send_json_error( array( 'message' => 'Failed to create PO: ' . $wpdb->last_error ) );
+    }
+
+    wp_send_json_success( array( 'message' => 'PO created', 'po_number' => $po_number ) );
+}
