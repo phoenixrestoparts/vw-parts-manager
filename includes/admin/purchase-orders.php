@@ -27,6 +27,19 @@ if (!defined('ABSPATH')) { exit; }
 
 <script type="text/javascript">
 jQuery(function($){
+    // Helper function to escape HTML and prevent XSS
+    function escapeHtml(text) {
+        if (text === null || text === undefined) return '';
+        var map = {
+            '&': '&amp;',
+            '<': '&lt;',
+            '>': '&gt;',
+            '"': '&quot;',
+            "'": '&#039;'
+        };
+        return String(text).replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     function formatStatus(raw) {
         if (raw === null || raw === undefined) return 'prepared';
         raw = String(raw).trim();
@@ -53,14 +66,14 @@ jQuery(function($){
             rows.forEach(function(r){
                 var status = formatStatus(r.status);
                 var locked = (Number(r.is_locked) === 1);
-                var created = r.created_at || '';
-                var updated = r.updated_at || '';
+                var created = escapeHtml(r.created_at) || '';
+                var updated = escapeHtml(r.updated_at) || '';
 
-                html += '<tr data-po-id="'+r.id+'">';
-                html += '<td>'+ (r.po_number || '') +'</td>';
-                html += '<td>'+ (r.supplier_name || '-') +'</td>';
+                html += '<tr data-po-id="'+Number(r.id)+'">';
+                html += '<td>'+ escapeHtml(r.po_number) +'</td>';
+                html += '<td>'+ escapeHtml(r.supplier_name || '-') +'</td>';
                 html += '<td>£'+ (parseFloat(r.total_cost) ? parseFloat(r.total_cost).toFixed(2) : '0.00') +'</td>';
-                html += '<td>'+ status +'</td>';
+                html += '<td>'+ escapeHtml(status) +'</td>';
                 html += '<td>'+(locked ? 'Yes' : 'No')+'</td>';
                 html += '<td>'+created+'</td>';
                 html += '<td>'+updated+'</td>';
@@ -103,9 +116,10 @@ jQuery(function($){
         var $tr = $(this).closest('tr');
         var po_id = $tr.data('po-id');
         var currentlyLocked = ($tr.find('td').eq(4).text().trim() === 'Yes');
+        var currentStatus = formatStatus($tr.find('td').eq(3).text().trim());
         var newLock = currentlyLocked ? 0 : 1;
         if (!confirm((newLock ? 'Lock' : 'Unlock') + ' this PO?')) return;
-        $.post(vwpm_ajax.ajax_url, { action: 'vwpm_update_po_status', nonce: vwpm_ajax.nonce, po_id: po_id, status: 'prepared', lock: newLock }, function(res){
+        $.post(vwpm_ajax.ajax_url, { action: 'vwpm_update_po_status', nonce: vwpm_ajax.nonce, po_id: po_id, status: currentStatus, lock: newLock }, function(res){
             if (res && res.success) {
                 fetchPos();
             } else {
@@ -135,20 +149,20 @@ jQuery(function($){
 
             var po = res.data.po;
 
-            // Build HTML for modal
+            // Build HTML for modal (with XSS protection)
             var html = '<div id="vwpm-po-modal" style="position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;">';
             html += '<div style="width:90%;max-width:1000px;background:#fff;padding:18px;border-radius:4px;box-shadow:0 4px 20px rgba(0,0,0,0.2);position:relative;">';
             html += '<button id="vwpm-po-modal-close" style="position:absolute;right:12px;top:12px;">Close</button>';
-            html += '<h2>Purchase Order: ' + (po.po_number || po.id) + '</h2>';
-            html += '<p><strong>Supplier:</strong> ' + (po.supplier_name || '-') + ' &nbsp; <strong>Email:</strong> ' + (po.supplier_email || '-') + '</p>';
-            html += '<p><strong>Created:</strong> ' + (po.created_at || '') + ' &nbsp; <strong>Status:</strong> ' + (po.status || 'prepared') + '</p>';
+            html += '<h2>Purchase Order: ' + escapeHtml(po.po_number || po.id) + '</h2>';
+            html += '<p><strong>Supplier:</strong> ' + escapeHtml(po.supplier_name || '-') + ' &nbsp; <strong>Email:</strong> ' + escapeHtml(po.supplier_email || '-') + '</p>';
+            html += '<p><strong>Created:</strong> ' + escapeHtml(po.created_at || '') + ' &nbsp; <strong>Status:</strong> ' + escapeHtml(po.status || 'prepared') + '</p>';
 
             // Product summary (if any)
             if (po.product_summary && po.product_summary.length) {
                 html += '<h3>Products</h3><ul>';
                 po.product_summary.forEach(function(p){
-                    var title = p.title || ('Product #' + (p.product_id || ''));
-                    var qty = (p.quantity !== undefined) ? p.quantity : '';
+                    var title = escapeHtml(p.title || ('Product #' + (p.product_id || '')));
+                    var qty = escapeHtml(p.quantity !== undefined ? p.quantity : '');
                     html += '<li>' + title + ' x ' + qty + '</li>';
                 });
                 html += '</ul>';
@@ -161,9 +175,9 @@ jQuery(function($){
             if (po.items && po.items.length) {
                 po.items.forEach(function(it){
                     html += '<tr>';
-                    html += '<td style="border:1px solid #ddd;padding:6px;">' + (it.component_name || '') + '</td>';
-                    html += '<td style="border:1px solid #ddd;padding:6px;">' + (it.component_number || '') + '</td>';
-                    html += '<td style="border:1px solid #ddd;padding:6px;">' + (it.supplier_ref || '') + '</td>';
+                    html += '<td style="border:1px solid #ddd;padding:6px;">' + escapeHtml(it.component_name || '') + '</td>';
+                    html += '<td style="border:1px solid #ddd;padding:6px;">' + escapeHtml(it.component_number || '') + '</td>';
+                    html += '<td style="border:1px solid #ddd;padding:6px;">' + escapeHtml(it.supplier_ref || '') + '</td>';
                     html += '<td style="border:1px solid #ddd;padding:6px;text-align:right;">' + (it.total_qty !== undefined ? Number(it.total_qty).toFixed(2) : '') + '</td>';
                     html += '<td style="border:1px solid #ddd;padding:6px;text-align:right;">' + (it.unit_price !== undefined ? '£' + Number(it.unit_price).toFixed(2) : '') + '</td>';
                     html += '<td style="border:1px solid #ddd;padding:6px;text-align:right;">' + (it.line_total !== undefined ? '£' + Number(it.line_total).toFixed(2) : '') + '</td>';
@@ -180,9 +194,9 @@ jQuery(function($){
                 html += '<thead><tr><th style="border:1px solid #ddd;padding:6px;">Tool Name</th><th style="border:1px solid #ddd;padding:6px;">Number</th><th style="border:1px solid #ddd;padding:6px;">Location</th></tr></thead><tbody>';
                 po.tools.forEach(function(t){
                     html += '<tr>';
-                    html += '<td style="border:1px solid #ddd;padding:6px;">' + (t.name || '') + '</td>';
-                    html += '<td style="border:1px solid #ddd;padding:6px;">' + (t.number || '') + '</td>';
-                    html += '<td style="border:1px solid #ddd;padding:6px;">' + (t.location || '') + '</td>';
+                    html += '<td style="border:1px solid #ddd;padding:6px;">' + escapeHtml(t.name || '') + '</td>';
+                    html += '<td style="border:1px solid #ddd;padding:6px;">' + escapeHtml(t.number || '') + '</td>';
+                    html += '<td style="border:1px solid #ddd;padding:6px;">' + escapeHtml(t.location || '') + '</td>';
                     html += '</tr>';
                 });
                 html += '</tbody></table>';
@@ -197,32 +211,40 @@ jQuery(function($){
             $('#vwpm-po-modal').remove();
             $('body').append(html);
 
-            // Close handlers
-            $('#vwpm-po-modal, #vwpm-po-close, #vwpm-po-modal-close').on('click', function(e){
-                var targetId = e.target.id;
-                if (targetId === 'vwpm-po-modal' || targetId === 'vwpm-po-close' || targetId === 'vwpm-po-modal-close') {
+            // Close handlers - only close when clicking overlay or close buttons
+            $('#vwpm-po-modal').on('click', function(e){
+                // Only close if clicking the overlay itself, not the content
+                if (e.target.id === 'vwpm-po-modal') {
                     $('#vwpm-po-modal').remove();
                 }
+            });
+            $('#vwpm-po-close, #vwpm-po-modal-close').on('click', function(e){
+                e.preventDefault();
+                $('#vwpm-po-modal').remove();
             });
 
             // Print handler: open new window and print formatted PO
             $('#vwpm-po-print').on('click', function(){
                 var printWindow = window.open('', '_blank', 'width=900,height=700');
+                if (!printWindow) {
+                    alert('Print window was blocked. Please allow pop-ups for this site.');
+                    return;
+                }
                 var doc = printWindow.document;
                 doc.open();
-                var title = 'Purchase Order - ' + (po.po_number || '');
+                var title = 'Purchase Order - ' + escapeHtml(po.po_number || '');
                 var content = '<html><head><title>' + title + '</title>';
                 content += '<style>body{font-family:Arial,Helvetica,sans-serif;font-size:12px;color:#000}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:6px;text-align:left}th{background:#f2f2f2}</style>';
                 content += '</head><body>';
                 content += '<h1>' + title + '</h1>';
-                content += '<p><strong>Supplier:</strong> ' + (po.supplier_name || '') + '</p>';
-                content += '<p><strong>Date:</strong> ' + (po.created_at || '') + '</p>';
+                content += '<p><strong>Supplier:</strong> ' + escapeHtml(po.supplier_name || '') + '</p>';
+                content += '<p><strong>Date:</strong> ' + escapeHtml(po.created_at || '') + '</p>';
                 content += '<h3>Items</h3><table><thead><tr><th>Item</th><th>Part</th><th>Qty</th><th>Unit</th><th>Total</th></tr></thead><tbody>';
                 if (po.items && po.items.length) {
                     po.items.forEach(function(it){
                         content += '<tr>';
-                        content += '<td>' + (it.component_name || '') + '</td>';
-                        content += '<td>' + (it.component_number || '') + '</td>';
+                        content += '<td>' + escapeHtml(it.component_name || '') + '</td>';
+                        content += '<td>' + escapeHtml(it.component_number || '') + '</td>';
                         content += '<td>' + (it.total_qty !== undefined ? Number(it.total_qty).toFixed(2) : '') + '</td>';
                         content += '<td>' + (it.unit_price !== undefined ? '£' + Number(it.unit_price).toFixed(2) : '') + '</td>';
                         content += '<td>' + (it.line_total !== undefined ? '£' + Number(it.line_total).toFixed(2) : '') + '</td>';
@@ -235,6 +257,7 @@ jQuery(function($){
                 doc.write(content);
                 doc.close();
                 printWindow.focus();
+                // Small delay to ensure content is rendered before printing
                 setTimeout(function(){ printWindow.print(); }, 300);
             });
 
