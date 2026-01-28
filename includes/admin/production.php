@@ -1,8 +1,13 @@
 <?php
 if (!defined('ABSPATH')) { exit; }
+
+// Check user capabilities
+if (!current_user_can('manage_options')) {
+    wp_die(__('You do not have sufficient permissions to access this page.'));
+}
 ?>
 <div class="wrap">
-    <h1>Purchase Orders</h1>
+    <h1>Production Planning</h1>
 
     <p>
         <button id="vwpm-refresh-pos" class="button">Refresh List</button>

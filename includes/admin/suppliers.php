@@ -1,11 +1,15 @@
 <?php
-// Suppliers admin page for VW Parts Manager (combined, non-AJAX + modal edit)
-// Place this file at: includes/admin/suppliers.php
+// Suppliers admin page for VW Parts Manager
 // This version supports: add (POST), edit (POST via modal), delete (GET with nonce).
 // It expects the suppliers DB table to have a `notes` column. If not, run the table migration provided earlier.
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
+}
+
+// Check user capabilities
+if (!current_user_can('manage_options')) {
+    wp_die(__('You do not have sufficient permissions to access this page.'));
 }
 
 global $wpdb;
