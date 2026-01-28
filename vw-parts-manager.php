@@ -1495,8 +1495,376 @@ function vwpm_ajax_update_po_status() {
     wp_send_json_success( array( 'message' => 'PO updated' ) );
 }
 
-/* ------------------------------------------------------------------ */
-/* Keep the rest of the AJAX handlers (import/export, supplier CRUD etc.) */
-/* You already had those implemented above in the file — ensure there */
-/* are no duplicate function definitions when you paste this file.     */
-/* ------------------------------------------------------------------ */
+/**
+ * Email PO handler
+ */
+function vwpm_ajax_email_po() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+
+    $supplier_id = intval($_POST['supplier_id'] ?? 0);
+    $supplier_email = sanitize_email($_POST['supplier_email'] ?? '');
+    $email_content_b64 = $_POST['email_content'] ?? '';
+    $email_content = base64_decode($email_content_b64);
+    $email_content = wp_kses_post($email_content);
+
+    if (!$supplier_email) {
+        wp_send_json_error(array('message' => 'No supplier email provided'));
+    }
+
+    global $wpdb;
+    $supplier = $wpdb->get_row($wpdb->prepare(
+        "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d",
+        $supplier_id
+    ));
+
+    if (!$supplier) {
+        wp_send_json_error(array('message' => 'Supplier not found'));
+    }
+
+    $site_name = get_bloginfo('name');
+    $subject = 'Purchase Order from ' . $site_name;
+
+    $html_message = '<html><body style="font-family: Arial, sans-serif;">';
+    $html_message .= '<h2>Purchase Order</h2>';
+    $html_message .= '<p><strong>From:</strong> ' . esc_html($site_name) . '</p>';
+    $html_message .= '<p><strong>Date:</strong> ' . date('d/m/Y H:i') . '</p>';
+    $html_message .= '<hr>';
+    $html_message .= '<pre style="font-family: monospace; background: #f5f5f5; padding: 15px; border: 1px solid #ddd;">';
+    $html_message .= esc_html($email_content);
+    $html_message .= '</pre>';
+    $html_message .= '<hr>';
+    $html_message .= '<p><em>This is an automated purchase order. Please confirm receipt.</em></p>';
+    $html_message .= '</body></html>';
+
+    $from_email = get_option('admin_email');
+    $headers = array(
+        'Content-Type: text/html; charset=UTF-8',
+        'From: "' . esc_attr($site_name) . '" <' . esc_attr($from_email) . '>'
+    );
+
+    $sent = wp_mail($supplier_email, $subject, $html_message, $headers);
+
+    if ($sent) {
+        wp_send_json_success(array('message' => 'Email sent successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to send email.'));
+    }
+}
+
+/**
+ * Import tools from CSV
+ */
+function vwpm_ajax_import_tools() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    if (!isset($_FILES['tools_csv'])) {
+        wp_send_json_error(array('message' => 'No file uploaded'));
+    }
+    
+    $file = $_FILES['tools_csv'];
+    $handle = fopen($file['tmp_name'], 'r');
+    
+    if (!$handle) {
+        wp_send_json_error(array('message' => 'Could not read file'));
+    }
+    
+    $headers = fgetcsv($handle);
+    $imported = 0;
+    
+    while (($row = fgetcsv($handle)) !== false) {
+        if (count($row) < 2) continue;
+        
+        $tool_name = sanitize_text_field($row[0]);
+        $tool_number = sanitize_text_field($row[1]);
+        $location = isset($row[2]) ? sanitize_text_field($row[2]) : '';
+        $notes = isset($row[3]) ? sanitize_textarea_field($row[3]) : '';
+        
+        $post_id = wp_insert_post(array(
+            'post_title' => $tool_name,
+            'post_type' => 'vwpm_tool',
+            'post_status' => 'publish'
+        ));
+        
+        if ($post_id) {
+            update_post_meta($post_id, '_vwpm_tool_number', $tool_number);
+            update_post_meta($post_id, '_vwpm_location', $location);
+            update_post_meta($post_id, '_vwpm_notes', $notes);
+            $imported++;
+        }
+    }
+    
+    fclose($handle);
+    
+    wp_send_json_success(array('imported' => $imported));
+}
+
+/**
+ * Import components from CSV
+ */
+function vwpm_ajax_import_components() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    if (!isset($_FILES['components_csv'])) {
+        wp_send_json_error(array('message' => 'No file uploaded'));
+    }
+    
+    $file = $_FILES['components_csv'];
+    $handle = fopen($file['tmp_name'], 'r');
+    
+    if (!$handle) {
+        wp_send_json_error(array('message' => 'Could not read file'));
+    }
+    
+    global $wpdb;
+    $headers = fgetcsv($handle);
+    $imported = 0;
+    
+    while (($row = fgetcsv($handle)) !== false) {
+        if (count($row) < 2) continue;
+        
+        $component_name = sanitize_text_field($row[0]);
+        $component_number = sanitize_text_field($row[1]);
+        $supplier_name = isset($row[2]) ? sanitize_text_field($row[2]) : '';
+        $price = isset($row[3]) ? floatval($row[3]) : 0;
+        $notes = isset($row[4]) ? sanitize_textarea_field($row[4]) : '';
+        
+        // Find supplier ID
+        $supplier_id = 0;
+        if ($supplier_name) {
+            $supplier = $wpdb->get_row($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}vwpm_suppliers WHERE name = %s",
+                $supplier_name
+            ));
+            if ($supplier) {
+                $supplier_id = $supplier->id;
+            }
+        }
+        
+        $post_id = wp_insert_post(array(
+            'post_title' => $component_name,
+            'post_type' => 'vwpm_component',
+            'post_status' => 'publish'
+        ));
+        
+        if ($post_id) {
+            update_post_meta($post_id, '_vwpm_component_number', $component_number);
+            update_post_meta($post_id, '_vwpm_supplier_id', $supplier_id);
+            update_post_meta($post_id, '_vwpm_price', $price);
+            update_post_meta($post_id, '_vwpm_notes', $notes);
+            $imported++;
+        }
+    }
+    
+    fclose($handle);
+    
+    wp_send_json_success(array('imported' => $imported));
+}
+
+/**
+ * Export tools to CSV
+ */
+function vwpm_ajax_export_tools() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Permission denied');
+    }
+    
+    $tools = get_posts(array(
+        'post_type' => 'vwpm_tool',
+        'posts_per_page' => -1,
+        'orderby' => 'title',
+        'order' => 'ASC'
+    ));
+    
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="tools-export.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, array('Tool Name', 'Tool Number', 'Location', 'Notes'));
+    
+    foreach ($tools as $tool) {
+        $tool_number = get_post_meta($tool->ID, '_vwpm_tool_number', true);
+        $location = get_post_meta($tool->ID, '_vwpm_location', true);
+        $notes = get_post_meta($tool->ID, '_vwpm_notes', true);
+        
+        fputcsv($output, array(
+            $tool->post_title,
+            $tool_number,
+            $location,
+            $notes
+        ));
+    }
+    
+    fclose($output);
+    exit;
+}
+
+/**
+ * Export components to CSV
+ */
+function vwpm_ajax_export_components() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Permission denied');
+    }
+    
+    global $wpdb;
+    $components = get_posts(array(
+        'post_type' => 'vwpm_component',
+        'posts_per_page' => -1,
+        'orderby' => 'title',
+        'order' => 'ASC'
+    ));
+    
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="components-export.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, array('Component Name', 'Component Number', 'Supplier Name', 'Price', 'Notes'));
+    
+    foreach ($components as $component) {
+        $component_number = get_post_meta($component->ID, '_vwpm_component_number', true);
+        $supplier_id = get_post_meta($component->ID, '_vwpm_supplier_id', true);
+        $price = get_post_meta($component->ID, '_vwpm_price', true);
+        $notes = get_post_meta($component->ID, '_vwpm_notes', true);
+        
+        $supplier_name = '';
+        if ($supplier_id) {
+            $supplier = $wpdb->get_row($wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d",
+                $supplier_id
+            ));
+            if ($supplier) {
+                $supplier_name = $supplier->name;
+            }
+        }
+        
+        fputcsv($output, array(
+            $component->post_title,
+            $component_number,
+            $supplier_name,
+            $price,
+            $notes
+        ));
+    }
+    
+    fclose($output);
+    exit;
+}
+
+/**
+ * Add supplier
+ */
+function vwpm_ajax_add_supplier() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vwpm_suppliers';
+    
+    $name = sanitize_text_field($_POST['supplier_name'] ?? '');
+    $email = sanitize_email($_POST['supplier_email'] ?? '');
+    $contact = sanitize_textarea_field($_POST['supplier_contact'] ?? '');
+    $notes = sanitize_textarea_field($_POST['supplier_notes'] ?? '');
+    
+    $wpdb->insert(
+        $table_name,
+        array(
+            'name' => $name,
+            'email' => $email,
+            'contact_details' => $contact,
+            'notes' => $notes
+        ),
+        array('%s', '%s', '%s', '%s')
+    );
+    
+    if ($wpdb->last_error) {
+        wp_send_json_error(array('message' => 'Database error: ' . $wpdb->last_error));
+    }
+    
+    wp_send_json_success();
+}
+
+/**
+ * Update supplier
+ */
+function vwpm_ajax_update_supplier() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vwpm_suppliers';
+    
+    $supplier_id = intval($_POST['supplier_id'] ?? 0);
+    $name = sanitize_text_field($_POST['name'] ?? '');
+    $email = sanitize_email($_POST['email'] ?? '');
+    $contact = sanitize_textarea_field($_POST['contact_details'] ?? '');
+    $notes = sanitize_textarea_field($_POST['notes'] ?? '');
+    
+    $updated = $wpdb->update(
+        $table_name,
+        array(
+            'name' => $name,
+            'email' => $email,
+            'contact_details' => $contact,
+            'notes' => $notes
+        ),
+        array('id' => $supplier_id),
+        array('%s', '%s', '%s', '%s'),
+        array('%d')
+    );
+    
+    if (false === $updated) {
+        wp_send_json_error(array('message' => 'Database error: ' . $wpdb->last_error));
+    }
+    
+    wp_send_json_success();
+}
+
+/**
+ * Delete supplier
+ */
+function vwpm_ajax_delete_supplier() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vwpm_suppliers';
+    
+    $supplier_id = intval($_POST['supplier_id']);
+    
+    if ($supplier_id <= 0) {
+        wp_send_json_error(array('message' => 'Invalid supplier ID'));
+    }
+    
+    $deleted = $wpdb->delete($table_name, array('id' => $supplier_id), array('%d'));
+    
+    if (false === $deleted) {
+        wp_send_json_error(array('message' => 'Database error: ' . $wpdb->last_error));
+    }
+    
+    wp_send_json_success();
+}
