@@ -1500,6 +1500,10 @@ function vwpm_ajax_update_po_status() {
  */
 function vwpm_ajax_email_po() {
     check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
 
     $supplier_id = intval($_POST['supplier_id'] ?? 0);
     $supplier_email = sanitize_email($_POST['supplier_email'] ?? '');
@@ -1557,6 +1561,10 @@ function vwpm_ajax_email_po() {
 function vwpm_ajax_import_tools() {
     check_ajax_referer('vwpm_nonce', 'nonce');
     
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
     if (!isset($_FILES['tools_csv'])) {
         wp_send_json_error(array('message' => 'No file uploaded'));
     }
@@ -1603,6 +1611,10 @@ function vwpm_ajax_import_tools() {
  */
 function vwpm_ajax_import_components() {
     check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
     
     if (!isset($_FILES['components_csv'])) {
         wp_send_json_error(array('message' => 'No file uploaded'));
@@ -1666,6 +1678,10 @@ function vwpm_ajax_import_components() {
 function vwpm_ajax_export_tools() {
     check_ajax_referer('vwpm_nonce', 'nonce');
     
+    if (!current_user_can('manage_options')) {
+        wp_die('Permission denied');
+    }
+    
     $tools = get_posts(array(
         'post_type' => 'vwpm_tool',
         'posts_per_page' => -1,
@@ -1701,6 +1717,10 @@ function vwpm_ajax_export_tools() {
  */
 function vwpm_ajax_export_components() {
     check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_die('Permission denied');
+    }
     
     global $wpdb;
     $components = get_posts(array(
@@ -1752,6 +1772,10 @@ function vwpm_ajax_export_components() {
 function vwpm_ajax_add_supplier() {
     check_ajax_referer('vwpm_nonce', 'nonce');
     
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
     global $wpdb;
     $table_name = $wpdb->prefix . 'vwpm_suppliers';
     
@@ -1771,6 +1795,10 @@ function vwpm_ajax_add_supplier() {
         array('%s', '%s', '%s', '%s')
     );
     
+    if ($wpdb->last_error) {
+        wp_send_json_error(array('message' => 'Database error: ' . $wpdb->last_error));
+    }
+    
     wp_send_json_success();
 }
 
@@ -1779,6 +1807,10 @@ function vwpm_ajax_add_supplier() {
  */
 function vwpm_ajax_update_supplier() {
     check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
     
     global $wpdb;
     $table_name = $wpdb->prefix . 'vwpm_suppliers';
@@ -1789,7 +1821,7 @@ function vwpm_ajax_update_supplier() {
     $contact = sanitize_textarea_field($_POST['contact_details'] ?? '');
     $notes = sanitize_textarea_field($_POST['notes'] ?? '');
     
-    $wpdb->update(
+    $updated = $wpdb->update(
         $table_name,
         array(
             'name' => $name,
@@ -1802,6 +1834,10 @@ function vwpm_ajax_update_supplier() {
         array('%d')
     );
     
+    if (false === $updated) {
+        wp_send_json_error(array('message' => 'Database error: ' . $wpdb->last_error));
+    }
+    
     wp_send_json_success();
 }
 
@@ -1811,12 +1847,24 @@ function vwpm_ajax_update_supplier() {
 function vwpm_ajax_delete_supplier() {
     check_ajax_referer('vwpm_nonce', 'nonce');
     
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
     global $wpdb;
     $table_name = $wpdb->prefix . 'vwpm_suppliers';
     
     $supplier_id = intval($_POST['supplier_id']);
     
-    $wpdb->delete($table_name, array('id' => $supplier_id), array('%d'));
+    if ($supplier_id <= 0) {
+        wp_send_json_error(array('message' => 'Invalid supplier ID'));
+    }
+    
+    $deleted = $wpdb->delete($table_name, array('id' => $supplier_id), array('%d'));
+    
+    if (false === $deleted) {
+        wp_send_json_error(array('message' => 'Database error: ' . $wpdb->last_error));
+    }
     
     wp_send_json_success();
 }
