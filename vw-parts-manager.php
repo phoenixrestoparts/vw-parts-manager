@@ -1366,6 +1366,13 @@ function vwpm_ajax_create_po_from_transient() {
     $transient_key = sanitize_text_field( $_POST['transient_key'] ?? '' );
     if ( empty( $transient_key ) ) {
         $transient_key = 'vwpm_po_' . $user_id;
+    } else {
+        // Security: validate that provided transient_key matches expected format and belongs to current user
+        $expected_key = 'vwpm_po_' . $user_id;
+        if ( $transient_key !== $expected_key ) {
+            error_log( sprintf( '[vwpm] create_po security: user=%d attempted to use transient_key=%s', $user_id, $transient_key ) );
+            wp_send_json_error( array( 'message' => 'Invalid transient key.' ) );
+        }
     }
 
     // debug log
