@@ -1288,9 +1288,9 @@ if (!function_exists('vwpm_generate_po_number')) {
     }
 }
 
-/**
- * Save PO selection into transient (used by batch UI)
- */
+// ---------------------------
+// Save PO selection into transient (used by batch UI)
+// ---------------------------
 add_action( 'wp_ajax_vwpm_save_po_selection', 'vwpm_ajax_save_po_selection' );
 function vwpm_ajax_save_po_selection() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1320,33 +1320,36 @@ function vwpm_ajax_save_po_selection() {
             'unit_price'       => $unit,
             'line_total'       => $line,
             'supplier_ref'     => sanitize_text_field( $it['supplier_ref'] ?? '' ),
-            'component_id'     => isset( $it['component_id'] ) ? sanitize_text_field( $it['component_id'] ) : '',
         );
 
         $supplier_total += $line;
     }
-
-    // Load supplier details (if available)
-    global $wpdb;
-    $supplier = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d", intval($supplier_id) ) );
 
     $po_data = array(
         'product_summary' => $products,
         'product_name'    => isset( $products[0]['title'] ) ? sanitize_text_field( $products[0]['title'] ) : '',
         'quantity'        => isset( $products[0]['quantity'] ) ? floatval( $products[0]['quantity'] ) : 0,
         'supplier_id'     => intval($supplier_id),
-        'supplier_name'   => $supplier ? $supplier->name : '',
-        'supplier_email'  => $supplier ? $supplier->email : '',
+        'supplier_name'   => sanitize_text_field( $_POST['supplier_name'] ?? '' ),
+        'supplier_email'  => sanitize_email( $_POST['supplier_email'] ?? '' ),
         'items'           => $po_items,
         'type'            => $type,
         'total_cost'      => $supplier_total,
         'tools'           => $tools,
     );
 
-    // store transient per user (used by print handler and create)
-    set_transient( 'vwpm_po_' . get_current_user_id(), $po_data, HOUR_IN_SECONDS );
+    $transient_key = 'vwpm_po_' . get_current_user_id();
+    $saved = set_transient( $transient_key, $po_data, HOUR_IN_SECONDS );
 
-    wp_send_json_success( array( 'message' => 'PO saved' ) );
+    // debug log
+    error_log( sprintf( '[vwpm] save_po_selection user=%d key=%s saved=%s', get_current_user_id(), $transient_key, $saved ? 'yes' : 'no' ) );
+
+    if ( false === $saved ) {
+        wp_send_json_error( array( 'message' => 'Failed to save PO selection (transient write failed).' ) );
+    }
+
+    // Return the transient key so client can pass it to create action if needed
+    wp_send_json_success( array( 'message' => 'PO saved', 'transient_key' => $transient_key ) );
 }
 
 // --- Create PO from current user's transient ---
@@ -1355,17 +1358,33 @@ function vwpm_ajax_create_po_from_transient() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
 
     $user_id = get_current_user_id();
-    $transient = get_transient( 'vwpm_po_' . $user_id );
+    if ( ! $user_id ) {
+        wp_send_json_error( array( 'message' => 'Not logged in.' ) );
+    }
+
+    // allow client to pass the transient key explicitly (helps with race conditions)
+    $transient_key = sanitize_text_field( $_POST['transient_key'] ?? '' );
+    if ( empty( $transient_key ) ) {
+        $transient_key = 'vwpm_po_' . $user_id;
+    }
+
+    // debug log
+    error_log( sprintf( '[vwpm] create_po start user=%d key=%s', $user_id, $transient_key ) );
+
+    $transient = get_transient( $transient_key );
     if ( empty( $transient ) || ! is_array( $transient ) ) {
+        error_log( sprintf( '[vwpm] create_po missing transient user=%d key=%s', $user_id, $transient_key ) );
         wp_send_json_error( array( 'message' => 'No saved PO found for current user. Save selection first.' ) );
     }
 
     global $wpdb;
     $table_pos = $wpdb->prefix . 'vwpm_pos';
 
-    // Defensive: ensure table exists
-    $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) );
+    // Defensive: ensure table exists (use esc_like so prepare is safe)
+    $like = $wpdb->esc_like( $table_pos );
+    $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $like ) );
     if ( ! $exists ) {
+        error_log( "[vwpm] create_po error: PO table not found ($table_pos)" );
         wp_send_json_error( array( 'message' => 'PO table not found. Run plugin activation to create DB table.' ) );
     }
 
@@ -1400,9 +1419,14 @@ function vwpm_ajax_create_po_from_transient() {
     );
 
     if ( false === $inserted ) {
+        error_log( sprintf( '[vwpm] create_po db insert failed: %s', $wpdb->last_error ) );
         wp_send_json_error( array( 'message' => 'Failed to create PO: ' . $wpdb->last_error ) );
     }
 
+    // Optionally delete the transient now that PO is created
+    delete_transient( $transient_key );
+
+    error_log( sprintf( '[vwpm] create_po success user=%d po=%s', $user_id, $po_number ) );
     wp_send_json_success( array( 'message' => 'PO created', 'po_number' => $po_number ) );
 }
 
