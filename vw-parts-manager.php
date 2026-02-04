@@ -1291,9 +1291,6 @@ if (!function_exists('vwpm_generate_po_number')) {
 /**
  * Save PO selection into transient (used by batch UI)
  */
-// ---------------------------
-// Save PO selection into transient (used by batch UI)
-// ---------------------------
 add_action( 'wp_ajax_vwpm_save_po_selection', 'vwpm_ajax_save_po_selection' );
 function vwpm_ajax_save_po_selection() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1383,9 +1380,8 @@ function vwpm_ajax_create_po_from_transient() {
     global $wpdb;
     $table_pos = $wpdb->prefix . 'vwpm_pos';
 
-    // Defensive: ensure table exists (use esc_like so prepare is safe)
-    $like = $wpdb->esc_like( $table_pos );
-    $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $like ) );
+    // Defensive: ensure table exists
+    $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) );
     if ( ! $exists ) {
         error_log( "[vwpm] create_po error: PO table not found ($table_pos)" );
         wp_send_json_error( array( 'message' => 'PO table not found. Run plugin activation to create DB table.' ) );
