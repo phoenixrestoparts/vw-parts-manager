@@ -299,6 +299,12 @@ if ($table_exists) {
     color: #721c24;
     border: 1px solid #f5c6cb;
 }
+
+.vwpm-message.info {
+    background-color: #d1ecf1;
+    color: #0c5460;
+    border: 1px solid #bee5eb;
+}
 </style>
 
 <script type="text/javascript">
@@ -602,7 +608,7 @@ function vwpmOpenPrintWindow(po) {
     printWindow.document.write(html);
     printWindow.document.close();
     
-    // Auto-trigger print dialog after a short delay
+    // Auto-trigger print dialog after a short delay to ensure content is fully rendered
     setTimeout(function() {
         printWindow.print();
     }, 250);
