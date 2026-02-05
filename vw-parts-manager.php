@@ -1465,6 +1465,7 @@ add_action( 'wp_ajax_vwpm_update_po_status', 'vwpm_ajax_update_po_status' );
 function vwpm_ajax_update_po_status() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
     if ( ! current_user_can('manage_options') ) {
+        error_log('[vwpm] update_po_status: Permission denied for user ' . get_current_user_id());
         wp_send_json_error( array( 'message' => 'Permission denied' ) );
     }
 
@@ -1472,7 +1473,8 @@ function vwpm_ajax_update_po_status() {
     $new_status = sanitize_text_field( $_POST['status'] ?? '' );
     $lock = isset( $_POST['lock'] ) ? intval( $_POST['lock'] ) : null;
 
-    if ( ! $po_id || ! in_array( $new_status, array('prepared','ordered','received','complete','locked') ) ) {
+    if ( ! $po_id || ! in_array( $new_status, array('prepared','ordered','received','complete','locked','cancelled') ) ) {
+        error_log('[vwpm] update_po_status: Invalid parameters - po_id: ' . $po_id . ', status: ' . $new_status);
         wp_send_json_error( array( 'message' => 'Invalid parameters' ) );
     }
 
@@ -1481,7 +1483,10 @@ function vwpm_ajax_update_po_status() {
 
     $data = array( 'status' => $new_status, 'updated_at' => current_time('mysql') );
     $format = array( '%s', '%s' );
-    if ( null !== $lock ) {
+    
+    // Only update is_locked if explicitly provided and status is not cancelled
+    // Cancelled status should not affect the lock state
+    if ( null !== $lock && $new_status !== 'cancelled' ) {
         $data['is_locked'] = $lock ? 1 : 0;
         $format[] = '%d';
     }
@@ -1489,10 +1494,98 @@ function vwpm_ajax_update_po_status() {
     $updated = $wpdb->update( $table_pos, $data, array( 'id' => $po_id ), $format, array('%d') );
 
     if ( false === $updated ) {
+        error_log('[vwpm] update_po_status: DB update failed for PO ' . $po_id . ': ' . $wpdb->last_error);
         wp_send_json_error( array( 'message' => 'DB update failed: ' . $wpdb->last_error ) );
     }
 
+    error_log('[vwpm] update_po_status: Successfully updated PO ' . $po_id . ' to status ' . $new_status);
     wp_send_json_success( array( 'message' => 'PO updated' ) );
+}
+
+/**
+ * Email PO to supplier
+ */
+function vwpm_ajax_email_po() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    
+    if ( ! current_user_can('manage_options') ) {
+        error_log('[vwpm] email_po: Permission denied for user ' . get_current_user_id());
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+
+    $po_id = intval( $_POST['po_id'] ?? 0 );
+    if ( ! $po_id ) {
+        error_log('[vwpm] email_po: Invalid PO id');
+        wp_send_json_error( array( 'message' => 'Invalid PO id' ) );
+    }
+
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+    $po = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_pos} WHERE id = %d", $po_id ), ARRAY_A );
+
+    if ( ! $po ) {
+        error_log('[vwpm] email_po: PO not found - ID: ' . $po_id);
+        wp_send_json_error( array( 'message' => 'PO not found' ) );
+    }
+
+    // Check if supplier has email
+    if ( empty( $po['supplier_email'] ) ) {
+        error_log('[vwpm] email_po: No supplier email for PO ' . $po_id);
+        wp_send_json_error( array( 'message' => 'Supplier email not available' ) );
+    }
+
+    // Decode JSON columns
+    $items = isset( $po['items'] ) ? json_decode( $po['items'], true ) : array();
+    if ( ! is_array( $items ) ) $items = array();
+
+    // Build email content
+    $subject = 'Purchase Order: ' . $po['po_number'];
+    
+    $message = '<html><body>';
+    $message .= '<h2>Purchase Order: ' . esc_html( $po['po_number'] ) . '</h2>';
+    $message .= '<p><strong>Date:</strong> ' . date('Y-m-d H:i:s') . '</p>';
+    $message .= '<p><strong>Total Cost:</strong> £' . number_format( floatval( $po['total_cost'] ), 2 ) . '</p>';
+    
+    if ( ! empty( $items ) ) {
+        $message .= '<h3>Items</h3>';
+        $message .= '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%;">';
+        $message .= '<thead><tr>';
+        $message .= '<th>Component Name</th>';
+        $message .= '<th>Component Number</th>';
+        $message .= '<th>Supplier Ref</th>';
+        $message .= '<th>Quantity</th>';
+        $message .= '<th>Unit Price</th>';
+        $message .= '<th>Line Total</th>';
+        $message .= '</tr></thead><tbody>';
+        
+        foreach ( $items as $item ) {
+            $message .= '<tr>';
+            $message .= '<td>' . esc_html( $item['component_name'] ?? '' ) . '</td>';
+            $message .= '<td>' . esc_html( $item['component_number'] ?? '' ) . '</td>';
+            $message .= '<td>' . esc_html( $item['supplier_ref'] ?? '-' ) . '</td>';
+            $message .= '<td>' . number_format( floatval( $item['total_qty'] ?? 0 ), 2 ) . '</td>';
+            $message .= '<td>£' . number_format( floatval( $item['unit_price'] ?? 0 ), 2 ) . '</td>';
+            $message .= '<td>£' . number_format( floatval( $item['line_total'] ?? 0 ), 2 ) . '</td>';
+            $message .= '</tr>';
+        }
+        
+        $message .= '</tbody></table>';
+    }
+    
+    $message .= '<p style="margin-top: 20px;"><strong>Total: £' . number_format( floatval( $po['total_cost'] ), 2 ) . '</strong></p>';
+    $message .= '</body></html>';
+
+    // Send email
+    $headers = array('Content-Type: text/html; charset=UTF-8');
+    $sent = wp_mail( $po['supplier_email'], $subject, $message, $headers );
+
+    if ( $sent ) {
+        error_log('[vwpm] email_po: Successfully sent email for PO ' . $po_id . ' to ' . $po['supplier_email']);
+        wp_send_json_success( array( 'message' => 'Email sent successfully to ' . $po['supplier_email'] ) );
+    } else {
+        error_log('[vwpm] email_po: Failed to send email for PO ' . $po_id . ' to ' . $po['supplier_email']);
+        wp_send_json_error( array( 'message' => 'Failed to send email. Please check your email configuration.' ) );
+    }
 }
 
 /* ------------------------------------------------------------------ */

@@ -21,6 +21,7 @@ $prepared_count = 0;
 $ordered_count = 0;
 $received_count = 0;
 $complete_count = 0;
+$cancelled_count = 0;
 
 if ($table_exists) {
     $total_pos = $wpdb->get_var("SELECT COUNT(*) FROM {$table_pos}");
@@ -28,6 +29,7 @@ if ($table_exists) {
     $ordered_count = $wpdb->get_var("SELECT COUNT(*) FROM {$table_pos} WHERE status = 'ordered'");
     $received_count = $wpdb->get_var("SELECT COUNT(*) FROM {$table_pos} WHERE status = 'received'");
     $complete_count = $wpdb->get_var("SELECT COUNT(*) FROM {$table_pos} WHERE status = 'complete'");
+    $cancelled_count = $wpdb->get_var("SELECT COUNT(*) FROM {$table_pos} WHERE status = 'cancelled'");
 }
 ?>
 
@@ -65,6 +67,10 @@ if ($table_exists) {
                 <div class="vwpm-stat-card">
                     <span class="vwpm-stat-label">Complete</span>
                     <span class="vwpm-stat-number"><?php echo $complete_count; ?></span>
+                </div>
+                <div class="vwpm-stat-card">
+                    <span class="vwpm-stat-label">Cancelled</span>
+                    <span class="vwpm-stat-number"><?php echo $cancelled_count; ?></span>
                 </div>
             </div>
         </div>
@@ -144,6 +150,11 @@ if ($table_exists) {
 .vwpm-po-status.complete {
     background-color: #c3e6cb;
     color: #155724;
+}
+
+.vwpm-po-status.cancelled {
+    background-color: #e2e3e5;
+    color: #383d41;
 }
 
 .vwpm-po-status.locked {
@@ -259,6 +270,35 @@ if ($table_exists) {
 .vwpm-status-controls button {
     margin-right: 10px;
 }
+
+.vwpm-action-buttons {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 2px solid #ddd;
+}
+
+.vwpm-action-buttons button {
+    margin-right: 10px;
+    margin-bottom: 10px;
+}
+
+.vwpm-message {
+    padding: 10px;
+    margin: 10px 0;
+    border-radius: 4px;
+}
+
+.vwpm-message.success {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+}
+
+.vwpm-message.error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+}
 </style>
 
 <script type="text/javascript">
@@ -358,7 +398,9 @@ function vwpmRenderPODetails(po) {
     html += '<div class="vwpm-po-detail-label">Supplier:</div><div>' + vwpmEscapeHtml(po.supplier_name || 'N/A') + '</div>';
     html += '<div class="vwpm-po-detail-label">Supplier Email:</div><div>' + vwpmEscapeHtml(po.supplier_email || 'N/A') + '</div>';
     html += '<div class="vwpm-po-detail-label">Total Cost:</div><div>£' + parseFloat(po.total_cost).toFixed(2) + '</div>';
-    html += '<div class="vwpm-po-detail-label">Status:</div><div><span class="vwpm-po-status ' + po.status + '">' + po.status.charAt(0).toUpperCase() + po.status.slice(1) + '</span></div>';
+    
+    var statusDisplay = po.status.charAt(0).toUpperCase() + po.status.slice(1);
+    html += '<div class="vwpm-po-detail-label">Status:</div><div><span class="vwpm-po-status ' + po.status + '">' + statusDisplay + '</span></div>';
     html += '<div class="vwpm-po-detail-label">Locked:</div><div>' + (po.is_locked == 1 ? 'Yes' : 'No') + '</div>';
     html += '<div class="vwpm-po-detail-label">Created:</div><div>' + vwpmFormatDate(po.created_at) + '</div>';
     html += '<div class="vwpm-po-detail-label">Updated:</div><div>' + vwpmFormatDate(po.updated_at) + '</div>';
@@ -424,6 +466,14 @@ function vwpmRenderPODetails(po) {
         html += '</div>';
     }
     
+    // Action Buttons (Print and Email)
+    html += '<div class="vwpm-action-buttons">';
+    html += '<h3>Actions</h3>';
+    html += '<div id="vwpm-action-message"></div>';
+    html += '<button class="button" onclick="vwpmPrintPO(' + po.id + ')">Print</button>';
+    html += '<button class="button" onclick="vwpmEmailPO(' + po.id + ')">Email to Supplier</button>';
+    html += '</div>';
+    
     // Status Controls
     if (po.is_locked != 1) {
         html += '<div class="vwpm-status-controls">';
@@ -433,6 +483,7 @@ function vwpmRenderPODetails(po) {
         html += '<option value="ordered"' + (po.status === 'ordered' ? ' selected' : '') + '>Ordered</option>';
         html += '<option value="received"' + (po.status === 'received' ? ' selected' : '') + '>Received</option>';
         html += '<option value="complete"' + (po.status === 'complete' ? ' selected' : '') + '>Complete</option>';
+        html += '<option value="cancelled"' + (po.status === 'cancelled' ? ' selected' : '') + '>Cancelled</option>';
         html += '<option value="locked"' + (po.status === 'locked' ? ' selected' : '') + '>Locked</option>';
         html += '</select>';
         html += '<button class="button button-primary" onclick="vwpmUpdatePOStatus(' + po.id + ')">Update Status</button>';
@@ -470,6 +521,128 @@ function vwpmUpdatePOStatus(poId) {
             alert('Error updating PO. Please try again.');
         }
     });
+}
+
+function vwpmPrintPO(poId) {
+    // Fetch PO data and open a print window
+    jQuery.ajax({
+        url: vwpm_ajax.ajax_url,
+        type: 'POST',
+        data: {
+            action: 'vwpm_get_po',
+            nonce: vwpm_ajax.nonce,
+            po_id: poId
+        },
+        success: function(response) {
+            if (response.success && response.data.po) {
+                vwpmOpenPrintWindow(response.data.po);
+            } else {
+                vwpmShowMessage('error', 'Error loading PO for printing: ' + (response.data.message || 'Unknown error'));
+            }
+        },
+        error: function() {
+            vwpmShowMessage('error', 'Error loading PO for printing. Please try again.');
+        }
+    });
+}
+
+function vwpmOpenPrintWindow(po) {
+    var printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    var html = '<!DOCTYPE html><html><head><title>Purchase Order - ' + vwpmEscapeHtml(po.po_number) + '</title>';
+    html += '<style>';
+    html += 'body { font-family: Arial, sans-serif; margin: 20px; }';
+    html += 'h1 { color: #333; }';
+    html += 'table { width: 100%; border-collapse: collapse; margin-top: 20px; }';
+    html += 'th, td { padding: 8px; text-align: left; border: 1px solid #ddd; }';
+    html += 'th { background-color: #f5f5f5; }';
+    html += '.header-info { margin-bottom: 20px; }';
+    html += '.header-info p { margin: 5px 0; }';
+    html += '@media print { button { display: none; } }';
+    html += '</style></head><body>';
+    
+    html += '<h1>Purchase Order: ' + vwpmEscapeHtml(po.po_number) + '</h1>';
+    html += '<div class="header-info">';
+    html += '<p><strong>Supplier:</strong> ' + vwpmEscapeHtml(po.supplier_name || 'N/A') + '</p>';
+    html += '<p><strong>Email:</strong> ' + vwpmEscapeHtml(po.supplier_email || 'N/A') + '</p>';
+    html += '<p><strong>Date:</strong> ' + vwpmFormatDate(po.created_at) + '</p>';
+    html += '<p><strong>Status:</strong> ' + vwpmEscapeHtml(po.status.charAt(0).toUpperCase() + po.status.slice(1)) + '</p>';
+    html += '</div>';
+    
+    if (po.items && po.items.length > 0) {
+        html += '<h2>Items</h2>';
+        html += '<table>';
+        html += '<thead><tr>';
+        html += '<th>Component Name</th>';
+        html += '<th>Component Number</th>';
+        html += '<th>Supplier Ref</th>';
+        html += '<th>Quantity</th>';
+        html += '<th>Unit Price</th>';
+        html += '<th>Line Total</th>';
+        html += '</tr></thead><tbody>';
+        
+        po.items.forEach(function(item) {
+            html += '<tr>';
+            html += '<td>' + vwpmEscapeHtml(item.component_name || '') + '</td>';
+            html += '<td>' + vwpmEscapeHtml(item.component_number || '') + '</td>';
+            html += '<td>' + vwpmEscapeHtml(item.supplier_ref || '-') + '</td>';
+            html += '<td>' + parseFloat(item.total_qty || 0).toFixed(2) + '</td>';
+            html += '<td>£' + parseFloat(item.unit_price || 0).toFixed(2) + '</td>';
+            html += '<td>£' + parseFloat(item.line_total || 0).toFixed(2) + '</td>';
+            html += '</tr>';
+        });
+        
+        html += '</tbody></table>';
+    }
+    
+    html += '<div style="margin-top: 20px;"><strong>Total Cost: £' + parseFloat(po.total_cost).toFixed(2) + '</strong></div>';
+    html += '<button onclick="window.print()" style="margin-top: 20px; padding: 10px 20px;">Print</button>';
+    html += '</body></html>';
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // Auto-trigger print dialog after a short delay
+    setTimeout(function() {
+        printWindow.print();
+    }, 250);
+}
+
+function vwpmEmailPO(poId) {
+    vwpmShowMessage('info', 'Sending email...');
+    
+    jQuery.ajax({
+        url: vwpm_ajax.ajax_url,
+        type: 'POST',
+        data: {
+            action: 'vwpm_email_po',
+            nonce: vwpm_ajax.nonce,
+            po_id: poId
+        },
+        success: function(response) {
+            if (response.success) {
+                vwpmShowMessage('success', response.data.message || 'Email sent successfully!');
+            } else {
+                vwpmShowMessage('error', response.data.message || 'Failed to send email');
+            }
+        },
+        error: function() {
+            vwpmShowMessage('error', 'Error sending email. Please try again.');
+        }
+    });
+}
+
+function vwpmShowMessage(type, message) {
+    var messageDiv = jQuery('#vwpm-action-message');
+    messageDiv.removeClass('success error info');
+    messageDiv.addClass('vwpm-message ' + type);
+    messageDiv.text(message);
+    messageDiv.show();
+    
+    // Hide message after 5 seconds
+    setTimeout(function() {
+        messageDiv.fadeOut();
+    }, 5000);
 }
 
 function vwpmClosePOModal() {
