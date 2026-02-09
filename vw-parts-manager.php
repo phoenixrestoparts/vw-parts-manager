@@ -2,7 +2,7 @@
 /**
  * Plugin Name: VW Parts Manufacturing Manager
  * Description: Manage components, tools, BOMs, and purchase orders for VW parts manufacturing
- * Version: 1.0.2
+ * Version: 1.0.3
  * Author: Custom Development
  * Requires at least: 5.8
  * Requires PHP: 7.4
@@ -40,14 +40,10 @@ class VW_Parts_Manager {
         add_action('wp_ajax_vwpm_add_supplier', 'vwpm_ajax_add_supplier');
         add_action('wp_ajax_vwpm_update_supplier', 'vwpm_ajax_update_supplier');
         add_action('wp_ajax_vwpm_delete_supplier', 'vwpm_ajax_delete_supplier');
-        // Note: some PO handlers are registered in global scope below so they are available after file load
     }
     
     public function activate() {
-        // Create custom tables if needed
         $this->create_tables();
-        
-        // Flush rewrite rules
         flush_rewrite_rules();
     }
     
@@ -74,7 +70,6 @@ class VW_Parts_Manager {
         require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
         dbDelta($sql);
 
-        // Ensure notes column exists (safe for existing installs)
         $column = $wpdb->get_results( $wpdb->prepare(
             "SHOW COLUMNS FROM {$table_name} LIKE %s",
             'notes'
@@ -106,7 +101,6 @@ class VW_Parts_Manager {
 
         dbDelta( $sql_pos );
 
-        // fallback if needed
         $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) );
         if ( ! $exists ) {
             $wpdb->query( $sql_pos );
@@ -114,7 +108,6 @@ class VW_Parts_Manager {
     }
     
     public function init() {
-        // Register custom post types
         $this->register_tools_post_type();
         $this->register_components_post_type();
     }
@@ -145,7 +138,6 @@ class VW_Parts_Manager {
         
         register_post_type('vwpm_tool', $args);
         
-        // Add meta boxes for tools
         add_action('add_meta_boxes_vwpm_tool', array($this, 'add_tool_meta_boxes'));
         add_action('save_post_vwpm_tool', array($this, 'save_tool_meta'));
     }
@@ -176,13 +168,11 @@ class VW_Parts_Manager {
         
         register_post_type('vwpm_component', $args);
         
-        // Add meta boxes for components
         add_action('add_meta_boxes_vwpm_component', array($this, 'add_component_meta_boxes'));
         add_action('save_post_vwpm_component', array($this, 'save_component_meta'));
     }
     
     public function add_admin_menus() {
-        // Main menu
         add_menu_page(
             'VW Parts Manager',
             'VW Parts',
@@ -193,7 +183,6 @@ class VW_Parts_Manager {
             30
         );
         
-        // Submenu items
         add_submenu_page(
             'vw-parts-manager',
             'Dashboard',
@@ -246,7 +235,6 @@ class VW_Parts_Manager {
             array($this, 'render_import_export_page')
         );
         
-        // Purchase Orders submenu
         add_submenu_page(
             'vw-parts-manager',
             'Purchase Orders',
@@ -257,8 +245,7 @@ class VW_Parts_Manager {
         );
     }
     
-      public function enqueue_admin_assets($hook) {
-        // Only load on our plugin pages and product edit pages
+    public function enqueue_admin_assets($hook) {
         $screen = get_current_screen();
         
         if (strpos($hook, 'vw-parts-manager') === false && 
@@ -269,40 +256,532 @@ class VW_Parts_Manager {
             return;
         }
         
-        // Enqueue Select2 for searchable dropdowns (from CDN)
+        // Enqueue Select2
         wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
         wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
         
-        // Force inline loading due to hosting environment issues
+        // Output inline CSS and JS
         add_action('admin_head', array($this, 'output_inline_css'));
         add_action('admin_footer', array($this, 'output_inline_js'));
     }
     
     public function output_inline_css() {
-        $css_file = VWPM_PLUGIN_DIR . 'assets/css/admin.css';
-        if (file_exists($css_file)) {
-            $css_content = file_get_contents($css_file);
-            if ($css_content !== false) {
-                echo '<style type="text/css" id="vwpm-admin-styles">' . $css_content . '</style>';
-            }
+        ?>
+        <style type="text/css" id="vwpm-admin-styles">
+        .vwpm-card {
+            background: #fff;
+            border: 1px solid #ccd0d4;
+            box-shadow: 0 1px 1px rgba(0,0,0,.04);
+            margin: 20px 0;
+            padding: 20px;
         }
+        .vwpm-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        .vwpm-stat-card {
+            background: #f0f0f1;
+            padding: 15px;
+            border-radius: 4px;
+            text-align: center;
+        }
+        .vwpm-stat-label {
+            display: block;
+            font-size: 14px;
+            color: #646970;
+            margin-bottom: 5px;
+        }
+        .vwpm-stat-number {
+            display: block;
+            font-size: 32px;
+            font-weight: bold;
+            color: #1d2327;
+        }
+        .vwpm-results-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 15px 0;
+        }
+        .vwpm-results-table th,
+        .vwpm-results-table td {
+            padding: 10px;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        .vwpm-results-table th {
+            background: #f0f0f1;
+            font-weight: bold;
+        }
+        .vwpm-supplier-block {
+            background: #f9f9f9;
+            border: 1px solid #ddd;
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+        }
+        .vwpm-calculator-results {
+            margin-top: 20px;
+        }
+        </style>
+        <?php
     }
 
     public function output_inline_js() {
-        ?>
-        <script type="text/javascript">
-        var vwpm_ajax = {
-            ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
-            nonce: '<?php echo wp_create_nonce('vwpm_nonce'); ?>'
-        };
+    ?>
+    <script type="text/javascript">
+    var vwpm_ajax = {
+        ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
+        nonce: '<?php echo wp_create_nonce('vwpm_nonce'); ?>'
+    };
+    
+    jQuery(document).ready(function($) {
+        // Enhanced Select2 with SKU search
+        function initComponentSelect2() {
+            $('.vwpm-component-select').select2({
+                width: '100%',
+                matcher: function(params, data) {
+                    // If there are no search terms, return all data
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+
+                    // Skip if there is no 'text' or 'element' property
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var sku = $(data.element).data('sku');
+                    
+                    // Search in both text and SKU
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    
+                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+
+                    return null;
+                }
+            });
+        }
+
+        function initToolSelect2() {
+            $('.vwpm-tool-select').select2({
+                width: '100%',
+                matcher: function(params, data) {
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var toolNumber = $(data.element).data('number');
+                    
+                    // Search in both text and tool number
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    
+                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+
+                    return null;
+                }
+            });
+        }
+
+        // Initialize on page load
+        initComponentSelect2();
+        initToolSelect2();
+
+        // BOM Row Management
+        var bomIndex = $('#vwpm-bom-rows tr').length;
         
-        jQuery(document).ready(function($) {
-            // BOM and tools row management (kept minimal here; production.js contains more)
-            $('.vwpm-component-select, .vwpm-tool-select').select2();
+        $('#vwpm-add-bom-row').on('click', function(e) {
+            e.preventDefault();
+            var template = $('#vwpm-bom-row-template').html();
+            var newRow = template.replace(/INDEX/g, bomIndex);
+            $('#vwpm-bom-rows').append(newRow);
+            
+            // Initialize Select2 on the new row
+            $('#vwpm-bom-rows tr:last').find('.vwpm-component-select').select2({
+                width: '100%',
+                matcher: function(params, data) {
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var sku = $(data.element).data('sku');
+                    
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+                    return null;
+                }
+            });
+            
+            bomIndex++;
         });
-        </script>
-        <?php
+
+        $(document).on('click', '.vwpm-remove-row', function(e) {
+            e.preventDefault();
+            $(this).closest('tr').remove();
+        });
+
+        // Tools Row Management
+        var toolIndex = $('#vwpm-tools-rows tr').length;
+        
+        $('#vwpm-add-tool-row').on('click', function(e) {
+            e.preventDefault();
+            var template = $('#vwpm-tool-row-template').html();
+            var newRow = template.replace(/INDEX/g, toolIndex);
+            $('#vwpm-tools-rows').append(newRow);
+            
+            // Initialize Select2 on the new row
+            $('#vwpm-tools-rows tr:last').find('.vwpm-tool-select').select2({
+                width: '100%',
+                matcher: function(params, data) {
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var toolNumber = $(data.element).data('number');
+                    
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+                    return null;
+                }
+            });
+            
+            toolIndex++;
+        });
+
+        $(document).on('click', '.vwpm-remove-tool-row', function(e) {
+            e.preventDefault();
+            $(this).closest('tr').remove();
+        });
+
+        // Production Calculator
+        function formatStatus(raw) {
+            if (raw === null || raw === undefined) return 'prepared';
+            raw = String(raw).trim();
+            if (raw === '' || raw === '0') return 'prepared';
+            return raw;
+        }
+
+        function fetchPos() {
+            $('#vwpm-pos-table tbody').html('<tr><td colspan="8">Loading…</td></tr>');
+            $.post(vwpm_ajax.ajax_url, {
+                action: 'vwpm_get_pos',
+                nonce: vwpm_ajax.nonce
+            }, function(res){
+                if (!res || !res.success) {
+                    $('#vwpm-pos-table tbody').html('<tr><td colspan="8">Failed to load POs</td></tr>');
+                    return;
+                }
+                var rows = res.data.pos || [];
+                if (!rows.length) {
+                    $('#vwpm-pos-table tbody').html('<tr><td colspan="8">No purchase orders found.</td></tr>');
+                    return;
+                }
+                var html = '';
+                rows.forEach(function(r){
+                    var status = formatStatus(r.status);
+                    var locked = (Number(r.is_locked) === 1);
+                    var created = r.created_at || '';
+                    var updated = r.updated_at || '';
+
+                    html += '<tr data-po-id="'+r.id+'">';
+                    html += '<td>'+ (r.po_number || '') +'</td>';
+                    html += '<td>'+ (r.supplier_name || '-') +'</td>';
+                    html += '<td>£'+ (parseFloat(r.total_cost) ? parseFloat(r.total_cost).toFixed(2) : '0.00') +'</td>';
+                    html += '<td>'+ status +'</td>';
+                    html += '<td>'+(locked ? 'Yes' : 'No')+'</td>';
+                    html += '<td>'+created+'</td>';
+                    html += '<td>'+updated+'</td>';
+                    html += '<td>';
+                    html += '<button class="button vwpm-po-view">View</button> ';
+                    html += '<button class="button vwpm-po-mark" data-status="ordered">Mark Ordered</button> ';
+                    html += '<button class="button vwpm-po-mark" data-status="received">Mark Received</button> ';
+                    html += '<button class="button vwpm-po-toggle-lock">'+(locked ? 'Unlock' : 'Lock')+'</button>';
+                    html += '</td>';
+                    html += '</tr>';
+                });
+                $('#vwpm-pos-table tbody').html(html);
+            }).fail(function(){
+                $('#vwpm-pos-table tbody').html('<tr><td colspan="8">Failed to load POs (request failed)</td></tr>');
+            });
+        }
+
+        $('#vwpm-refresh-pos').on('click', function(e) {
+            e.preventDefault();
+            fetchPos();
+        });
+
+        // Auto-load POs on page load if table exists
+        if ($('#vwpm-pos-table').length) {
+            fetchPos();
+        }
+
+        // PO quantity/checkbox changes
+        $(document).on('change', '.vwpm-po-include', function() {
+            recalculateSupplierTotal($(this).data('supplier-id'));
+        });
+
+        $(document).on('input', '.vwpm-po-qty', function() {
+            var $row = $(this).closest('tr');
+            var qty = parseFloat($(this).val()) || 0;
+            var unitPrice = parseFloat($(this).data('unit-price')) || 0;
+            var lineTotal = qty * unitPrice;
+            $row.find('.vwpm-po-line').text('£' + lineTotal.toFixed(2));
+            recalculateSupplierTotal($(this).closest('.vwpm-supplier-block').data('supplier-id'));
+        });
+
+        function recalculateSupplierTotal(supplierId) {
+            var $block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
+            var total = 0;
+            $block.find('.vwpm-po-row').each(function() {
+                if ($(this).find('.vwpm-po-include').is(':checked')) {
+                    var lineText = $(this).find('.vwpm-po-line').text().replace(/[£,]/g, '');
+                    total += parseFloat(lineText) || 0;
+                }
+            });
+            $block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
+        }
+
+        // Save PO selection
+        $(document).on('click', '.vwpm-save-po-btn', function(e) {
+            e.preventDefault();
+            var supplierId = $(this).data('supplier-id');
+            var $block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
+            
+            var items = [];
+            $block.find('.vwpm-po-row').each(function() {
+                if ($(this).find('.vwpm-po-include').is(':checked')) {
+                    var $row = $(this);
+                    items.push({
+                        component_id: $row.data('component-id'),
+                        component_name: $row.find('td:eq(1)').text(),
+                        component_number: $row.find('td:eq(2)').text(),
+                        supplier_ref: $row.find('td:eq(3)').text(),
+                        qty: parseFloat($row.find('.vwpm-po-qty').val()) || 0,
+                        unit_price: parseFloat($row.find('.vwpm-po-qty').data('unit-price')) || 0
+                    });
+                }
+            });
+
+            $.ajax({
+                url: vwpm_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'vwpm_save_po_selection',
+                    nonce: vwpm_ajax.nonce,
+                    supplier_id: supplierId,
+                    items: items,
+                    tools: [],
+                    products: [],
+                    type: 'manufactured'
+                },
+                success: function(response) {
+                    if (response.success) {
+                        alert('PO selection saved!');
+                    } else {
+                        alert('Error: ' + response.data.message);
+                    }
+                }
+            });
+        });
+
+        // Create PO - FIXED to prevent duplicates
+$(document).on('click', '.vwpm-create-po-btn', function(e) {
+    e.preventDefault();
+    var $btn = $(this);
+    
+    // Prevent double-clicking
+    if ($btn.prop('disabled')) {
+        return;
     }
+    
+    $btn.prop('disabled', true).text('Creating...');
+    
+    $.ajax({
+        url: vwpm_ajax.ajax_url,
+        type: 'POST',
+        data: {
+            action: 'vwpm_create_po_from_transient',
+            nonce: vwpm_ajax.nonce
+        },
+        success: function(response) {
+            if (response.success) {
+                alert('PO created successfully! PO Number: ' + response.data.po_number);
+                $btn.text('Created ✓').css('background', '#46b450');
+            } else {
+                alert('Error: ' + (response.data.message || 'Failed to create PO'));
+                $btn.prop('disabled', false).text('Create PO (persist to database)');
+            }
+        },
+        error: function() {
+            alert('Request failed');
+            $btn.prop('disabled', false).text('Create PO (persist to database)');
+        }
+    });
+});
+
+// Save PO - UPDATED to show Create/Print buttons after saving
+$(document).on('click', '.vwpm-save-po-btn', function(e) {
+    e.preventDefault();
+    var supplierId = $(this).data('supplier-id');
+    var block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
+    var $btn = $(this);
+    
+    var items = [];
+    var tools = [];
+    
+    block.find('.vwpm-po-row').each(function() {
+        if ($(this).find('.vwpm-po-include').is(':checked')) {
+            var row = $(this);
+            items.push({
+                component_id: row.data('component-id'),
+                component_name: row.find('td').eq(1).text(),
+                component_number: row.find('td').eq(2).text(),
+                supplier_ref: row.find('td').eq(3).text(),
+                qty: parseFloat(row.find('.vwpm-po-qty').val()) || 0,
+                unit_price: parseFloat(row.find('.vwpm-po-qty').data('unit-price')) || 0,
+                qty_per_unit: parseFloat(row.find('.vwpm-po-qty').data('qty-per-unit')) || 1
+            });
+        }
+    });
+
+    // Get product info if available
+    var products = [];
+    if ($('#vwpm_product_id').length) {
+        var selectedOption = $('#vwpm_product_id option:selected');
+        products = [{
+            product_id: $('#vwpm_product_id').val(),
+            title: selectedOption.text(),
+            quantity: $('#vwpm_quantity').val()
+        }];
+    }
+
+    $btn.prop('disabled', true).text('Saving...');
+
+    $.ajax({
+        url: vwpm_ajax.ajax_url,
+        type: 'POST',
+        data: {
+            action: 'vwpm_save_po_selection',
+            nonce: vwpm_ajax.nonce,
+            supplier_id: supplierId,
+            items: items,
+            tools: tools,
+            products: products,
+            type: $('#vwpm_product_type').length ? $('#vwpm_product_type').val() : 'manufactured'
+        },
+        success: function(response) {
+            if (response.success) {
+                alert('PO selection saved! You can now create or print.');
+                $btn.text('Saved ✓').css('background', '#46b450');
+                
+                // Show the Create and Print buttons
+                block.find('.vwpm-create-po-btn, .vwpm-print-po-btn').show();
+            } else {
+                alert('Error: ' + (response.data.message || 'Failed to save'));
+                $btn.prop('disabled', false).text('Save Selection for Print/Create');
+            }
+        },
+        error: function() {
+            alert('Request failed');
+            $btn.prop('disabled', false).text('Save Selection for Print/Create');
+        }
+    });
+});
+
+// Print PO button
+$(document).on('click', '.vwpm-print-po-btn', function(e) {
+    e.preventDefault();
+    window.open(vwpm_ajax.ajax_url.replace('admin-ajax.php', 'admin.php') + '?vwpm_print_po=1', '_blank');
+});
+
+// Add custom line to PO
+$(document).on('click', '.vwpm-add-custom-line-btn', function(e) {
+    e.preventDefault();
+    var supplierId = $(this).data('supplier-id');
+    var block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
+    var table = block.find('.vwpm-results-table tbody');
+    
+    // Prompt for custom item details
+    var itemName = prompt('Enter item name:');
+    if (!itemName) return;
+    
+    var itemNumber = prompt('Enter part/item number (optional):', '');
+    var qty = prompt('Enter quantity:', '1');
+    var unitPrice = prompt('Enter unit price (£):', '0');
+    
+    qty = parseFloat(qty) || 1;
+    unitPrice = parseFloat(unitPrice) || 0;
+    var lineTotal = qty * unitPrice;
+    
+    // Generate a unique custom ID
+    var customId = 'custom_' + Date.now();
+    
+    // Add row to table (before the total row)
+    var row = '<tr data-component-id="' + customId + '" class="vwpm-po-row vwpm-custom-row" style="background:#fffbcc;">';
+    row += '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' + supplierId + '" checked></td>';
+    row += '<td>' + itemName + ' <em>(custom)</em></td>';
+    row += '<td>' + itemNumber + '</td>';
+    row += '<td>-</td>';
+    row += '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' + qty.toFixed(2) + '" style="width:100px;" data-unit-price="' + unitPrice + '"></td>';
+    row += '<td class="vwpm-po-unit">£' + unitPrice.toFixed(2) + '</td>';
+    row += '<td class="vwpm-po-line">£' + lineTotal.toFixed(2) + '</td>';
+    row += '</tr>';
+    
+    // Insert before the supplier total row
+    table.find('.vwpm-supplier-total').before(row);
+    
+    // Recalculate total
+    recalculateSupplierTotal(supplierId);
+    
+    alert('Custom line added! Remember to click "Save Selection" before creating/printing the PO.');
+});
+
+function recalculateSupplierTotal(supplierId) {
+    var block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
+    var total = 0;
+    
+    block.find('.vwpm-po-row').each(function() {
+        if ($(this).find('.vwpm-po-include').is(':checked')) {
+            var lineText = $(this).find('.vwpm-po-line').text().replace(/[£,]/g, '');
+            total += parseFloat(lineText) || 0;
+        }
+    });
+    
+    block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
+}
     
     // Tool Meta Boxes
     public function add_tool_meta_boxes() {
@@ -322,7 +801,6 @@ class VW_Parts_Manager {
         $tool_number = get_post_meta($post->ID, '_vwpm_tool_number', true);
         $location = get_post_meta($post->ID, '_vwpm_location', true);
         $notes = get_post_meta($post->ID, '_vwpm_notes', true);
-        
         ?>
         <table class="form-table">
             <tr>
@@ -341,8 +819,6 @@ class VW_Parts_Manager {
         <?php
     }
     
-    
-     
     public function save_tool_meta($post_id) {
         if (!isset($_POST['vwpm_tool_nonce']) || !wp_verify_nonce($_POST['vwpm_tool_nonce'], 'vwpm_tool_meta')) {
             return;
@@ -389,8 +865,6 @@ class VW_Parts_Manager {
         $price = get_post_meta($post->ID, '_vwpm_price', true);
         $notes = get_post_meta($post->ID, '_vwpm_notes', true);
         $drawing_file = get_post_meta($post->ID, '_vwpm_drawing_file', true);
-
-        // NEW fields
         $component_location = get_post_meta($post->ID, '_vwpm_component_location', true);
         $component_supplier_ref = get_post_meta($post->ID, '_vwpm_component_supplier_ref', true);
 
@@ -472,7 +946,6 @@ class VW_Parts_Manager {
             update_post_meta($post_id, '_vwpm_notes', sanitize_textarea_field($_POST['vwpm_notes']));
         }
 
-        // NEW: save component location and supplier ref
         if (isset($_POST['vwpm_component_location'])) {
             update_post_meta($post_id, '_vwpm_component_location', sanitize_text_field($_POST['vwpm_component_location']));
         } else {
@@ -485,12 +958,9 @@ class VW_Parts_Manager {
             delete_post_meta($post_id, '_vwpm_component_supplier_ref');
         }
 
-        // Handle file upload
         if (isset($_FILES['vwpm_drawing_file']) && $_FILES['vwpm_drawing_file']['error'] === UPLOAD_ERR_OK) {
             require_once(ABSPATH . 'wp-admin/includes/file.php');
-
             $upload = wp_handle_upload($_FILES['vwpm_drawing_file'], array('test_form' => false));
-
             if (isset($upload['url'])) {
                 update_post_meta($post_id, '_vwpm_drawing_file', $upload['url']);
             }
@@ -499,7 +969,6 @@ class VW_Parts_Manager {
     
     // Product Meta Boxes (BOM)
     public function add_product_meta_boxes() {
-        // Check if WooCommerce is active
         if (!class_exists('WooCommerce')) {
             return;
         }
@@ -546,7 +1015,6 @@ class VW_Parts_Manager {
             'orderby' => 'title',
             'order' => 'ASC'
         ));
-        
         ?>
         <div id="vwpm-bom-repeater">
             <p><strong>Search components by SKU/Name:</strong></p>
@@ -612,12 +1080,6 @@ class VW_Parts_Manager {
                 </td>
             </tr>
         </script>
-        
-        <style>
-        #vwpm-bom-repeater select {
-            max-width: 100%;
-        }
-        </style>
         <?php
     }
     
@@ -633,7 +1095,6 @@ class VW_Parts_Manager {
             'orderby' => 'title',
             'order' => 'ASC'
         ));
-        
         ?>
         <div id="vwpm-tools-repeater">
             <p><strong>Search tools by number or name:</strong></p>
@@ -702,7 +1163,6 @@ class VW_Parts_Manager {
     public function render_product_supplier_meta_box($post) {
         $supplier_id = get_post_meta($post->ID, '_vwpm_product_supplier_id', true);
         $suppliers = $this->get_suppliers();
-        
         ?>
         <p>
             <label for="vwpm_product_supplier">Supplier (for ready-made products):</label>
@@ -767,8 +1227,6 @@ class VW_Parts_Manager {
         }
     }
     
-    
-    // Helper function to get suppliers
     private function get_suppliers() {
         global $wpdb;
         $table_name = $wpdb->prefix . 'vwpm_suppliers';
@@ -797,9 +1255,7 @@ class VW_Parts_Manager {
 }
 new VW_Parts_Manager();
 
-// ---- Admin list columns for Components & Tools (global scope - outside the class) ----
-
-// Components: add Location and Supplier Ref columns in the admin list
+// Admin list columns for Components & Tools
 add_filter( 'manage_edit-vwpm_component_columns', 'vwpm_component_columns', 15 );
 function vwpm_component_columns( $columns ) {
     $new = array();
@@ -825,7 +1281,6 @@ function vwpm_render_component_list_columns( $column, $post_id ) {
     }
 }
 
-// Tools: add Location column in the admin list
 add_filter( 'manage_edit-vwpm_tool_columns', 'vwpm_tool_columns', 15 );
 function vwpm_tool_columns( $columns ) {
     $new = array();
@@ -846,7 +1301,6 @@ function vwpm_render_tool_list_columns( $column, $post_id ) {
     }
 }
 
-// Small admin CSS for these columns
 add_action( 'admin_head', 'vwpm_admin_columns_css' );
 function vwpm_admin_columns_css() {
     echo '<style>
@@ -854,7 +1308,7 @@ function vwpm_admin_columns_css() {
     </style>';
 }
 
-/* PRINT PO HANDLER */
+// PRINT PO HANDLER
 add_action('admin_init', 'vwpm_handle_print_po');
 function vwpm_handle_print_po() {
     if (!isset($_GET['vwpm_print_po']) || !current_user_can('manage_woocommerce')) {
@@ -866,7 +1320,6 @@ function vwpm_handle_print_po() {
         wp_die('PO data expired or invalid. Please generate the PO again.');
     }
 
-    // Normalize fields for backward compatibility
     $product_name = '';
     $quantity = '';
     if ( ! empty( $po_data['product_name'] ) ) {
@@ -891,7 +1344,6 @@ function vwpm_handle_print_po() {
         $quantity = $total_units;
     }
 
-    // Items array
     $items = isset( $po_data['items'] ) && is_array( $po_data['items'] ) ? $po_data['items'] : array();
     $total_cost = isset( $po_data['total_cost'] ) ? floatval( $po_data['total_cost'] ) : 0;
     $type = isset( $po_data['type'] ) ? $po_data['type'] : 'manufactured';
@@ -1001,21 +1453,14 @@ function vwpm_handle_print_po() {
     exit;
 }
 
-/* AJAX Handlers */
-/* (Note: main handlers were registered in the class constructor above) */
-
+// AJAX: Calculate Production
 function vwpm_ajax_calculate_production() {
     check_ajax_referer('vwpm_nonce', 'nonce');
-
     global $wpdb;
 
-    // Accept either:
-    // - legacy single product: product_type, product_id, quantity
-    // - or multiple products: products[] where each product has product_id, quantity, product_type (optional)
     $products = array();
 
     if ( ! empty( $_POST['products'] ) && is_array( $_POST['products'] ) ) {
-        // clients send products as an array of { product_id, quantity, product_type? }
         foreach ( $_POST['products'] as $p ) {
             $pid = intval( $p['product_id'] ?? 0 );
             $qty = floatval( $p['quantity'] ?? 0 );
@@ -1025,7 +1470,6 @@ function vwpm_ajax_calculate_production() {
             }
         }
     } else {
-        // legacy single product
         $product_type = sanitize_text_field( $_POST['product_type'] ?? 'manufactured' );
         $product_id = intval( $_POST['product_id'] ?? 0 );
         $quantity = floatval( $_POST['quantity'] ?? 0 );
@@ -1039,9 +1483,8 @@ function vwpm_ajax_calculate_production() {
         wp_send_json_error( array( 'message' => 'No valid products provided' ) );
     }
 
-    // Aggregate requirements per supplier_id -> component_id
-    $requirements = array(); // supplier_id => [ supplier_name, supplier_email, items => [ component_id => itemdata ] ]
-    $tools_union = array(); // tool_id => true
+    $requirements = array();
+    $tools_union = array();
     $grand_total = 0;
 
     foreach ( $products as $product_row ) {
@@ -1055,7 +1498,6 @@ function vwpm_ajax_calculate_production() {
             $bom = get_post_meta( $product->ID, '_vwpm_bom', true );
             if ( ! is_array( $bom ) ) $bom = array();
 
-            // gather tools for this product
             $product_tools = get_post_meta( $product->ID, '_vwpm_tools', true );
             if ( is_array( $product_tools ) ) {
                 foreach ( $product_tools as $tid ) {
@@ -1094,7 +1536,6 @@ function vwpm_ajax_calculate_production() {
                     );
                 }
 
-                // aggregate by component id
                 if ( ! isset( $requirements[ $supplier_id ]['items'][ $component_id ] ) ) {
                     $requirements[ $supplier_id ]['items'][ $component_id ] = array(
                         'component_id'   => $component_id,
@@ -1108,7 +1549,6 @@ function vwpm_ajax_calculate_production() {
                     );
                 }
 
-                // sum quantities and costs
                 $requirements[ $supplier_id ]['items'][ $component_id ]['total_qty'] += $req_qty;
                 $requirements[ $supplier_id ]['items'][ $component_id ]['line_total'] += $line_cost;
 
@@ -1116,10 +1556,8 @@ function vwpm_ajax_calculate_production() {
             }
 
         } else {
-            // ready-made product: treat product itself as single item
             $supplier_id = intval( get_post_meta( $product->ID, '_vwpm_product_supplier_id', true ) );
             if ( ! $supplier_id ) {
-                // product with no supplier - skip
                 continue;
             }
 
@@ -1162,27 +1600,21 @@ function vwpm_ajax_calculate_production() {
         }
     }
 
-    // Convert items from keyed arrays to indexed arrays for template
     foreach ( $requirements as &$sup ) {
         $sup['items'] = array_values( $sup['items'] );
     }
     unset( $sup );
 
-    // Convert tools union to array of tool IDs
     $tools = array_keys( $tools_union );
-
-    // Use existing build function to create the UI
     $html = vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_total );
 
     wp_send_json_success( array( 'html' => $html ) );
 }
 
-// Render editable PO preview for multiple products
 function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_total ) {
     $html = '<div class="vwpm-calculator-results">';
     $html .= '<h2>Production Order Preview</h2>';
 
-    // show selected products summary
     $html .= '<h3>Selected Products</h3><ul>';
     foreach ( $products as $p ) {
         $prod = get_post( $p['product_id'] );
@@ -1192,7 +1624,6 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
     }
     $html .= '</ul>';
 
-    // Begin supplier sections
     foreach ( $requirements as $supplier_id => $supplier_data ) {
         $html .= '<div class="vwpm-supplier-block" data-supplier-id="' . esc_attr( $supplier_id ) . '" style="margin-bottom:20px;padding:15px;border:1px solid #ddd;">';
         $html .= '<h4>Supplier: ' . esc_html( $supplier_data['supplier_name'] ) . '</h4>';
@@ -1202,7 +1633,7 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
 
         $html .= '<table class="vwpm-results-table" style="width:100%;border-collapse:collapse;">';
         $html .= '<thead><tr>';
-        $html .= '<th style="width:40px"></th>'; // checkbox
+        $html .= '<th style="width:40px"></th>';
         $html .= '<th>Item</th><th>Part Number</th><th>Supplier Ref</th><th style="width:120px">Qty</th><th style="width:110px">Unit Price</th><th style="width:110px">Line Total</th>';
         $html .= '</tr></thead><tbody>';
 
@@ -1233,16 +1664,16 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
 
         $html .= '</tbody></table>';
 
-        $html .= '<div style="margin-top:10px;">';
-        $html .= '<button class="button button-secondary vwpm-create-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">Create PO (persist)</button> ';
-        $html .= '<button class="button button-primary vwpm-save-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">Save Selection for this Supplier</button> ';
-        $html .= '<a href="' . esc_url( admin_url( 'admin.php?vwpm_print_po=1' ) ) . '" target="_blank" class="button">Print/Save as PDF (current selection)</a>';
+                $html .= '<div style="margin-top:10px;">';
+        $html .= '<button class="button button-primary vwpm-save-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">Save Selection for Print/Create</button> ';
+        $html .= '<button class="button button-secondary vwpm-create-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '" style="display:none;">Create PO (persist to database)</button> ';
+        $html .= '<button class="button vwpm-print-po-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '" style="display:none;">Print/PDF</button> ';
+        $html .= '<button class="button vwpm-add-custom-line-btn" data-supplier-id="' . esc_attr( $supplier_id ) . '">+ Add Custom Line</button>';
         $html .= '</div>';
 
-        $html .= '</div>'; // end supplier block
+        $html .= '</div>';
     }
 
-    // Tools summary
     if ( ! empty( $tools ) ) {
         $html .= '<h3>Tools Required</h3><table class="vwpm-results-table">';
         $html .= '<thead><tr><th>Tool Name</th><th>Tool Number</th><th>Location</th></tr></thead><tbody>';
@@ -1259,26 +1690,16 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
     }
 
     $html .= '<div style="margin-top:20px;font-size:16px;"><strong>Grand Total: £' . number_format( $grand_total, 2 ) . '</strong></div>';
-    $html .= '</div>'; // results
+    $html .= '</div>';
 
     return $html;
 }
 
-/* (Other AJAX handlers and import/export functions remain the same as in your repo) */
-/* For brevity I keep the rest of the handlers as they were — ensure no duplicates exist in the file you paste. */
-
-/* ---------------------------
-   Persistent PO helpers & handlers (single copy)
-   --------------------------- */
-
-/**
- * PO number generator (global helper)
- */
+// PO number generator
 if (!function_exists('vwpm_generate_po_number')) {
     function vwpm_generate_po_number() {
         global $wpdb;
         $table_pos = $wpdb->prefix . 'vwpm_pos';
-        // Next sequence using max(id)+1 (works even if table empty)
         $next_id = $wpdb->get_var( "SELECT COALESCE(MAX(id),0) + 1 FROM {$table_pos}" );
         $site = get_bloginfo('name');
         $sitecode = strtoupper( preg_replace('/[^A-Z]/', '', substr($site, 0, 2) ) );
@@ -1288,9 +1709,7 @@ if (!function_exists('vwpm_generate_po_number')) {
     }
 }
 
-/**
- * Save PO selection into transient (used by batch UI)
- */
+// Save PO selection into transient
 add_action( 'wp_ajax_vwpm_save_po_selection', 'vwpm_ajax_save_po_selection' );
 function vwpm_ajax_save_po_selection() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1326,7 +1745,6 @@ function vwpm_ajax_save_po_selection() {
         $supplier_total += $line;
     }
 
-    // Load supplier details (if available)
     global $wpdb;
     $supplier = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d", intval($supplier_id) ) );
 
@@ -1343,13 +1761,12 @@ function vwpm_ajax_save_po_selection() {
         'tools'           => $tools,
     );
 
-    // store transient per user (used by print handler and create)
     set_transient( 'vwpm_po_' . get_current_user_id(), $po_data, HOUR_IN_SECONDS );
 
     wp_send_json_success( array( 'message' => 'PO saved' ) );
 }
 
-// --- Create PO from current user's transient ---
+// Create PO from current user's transient
 add_action( 'wp_ajax_vwpm_create_po_from_transient', 'vwpm_ajax_create_po_from_transient' );
 function vwpm_ajax_create_po_from_transient() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1363,7 +1780,6 @@ function vwpm_ajax_create_po_from_transient() {
     global $wpdb;
     $table_pos = $wpdb->prefix . 'vwpm_pos';
 
-    // Defensive: ensure table exists
     $exists = $wpdb->get_var( $wpdb->prepare( "SHOW TABLES LIKE %s", $table_pos ) );
     if ( ! $exists ) {
         wp_send_json_error( array( 'message' => 'PO table not found. Run plugin activation to create DB table.' ) );
@@ -1396,7 +1812,7 @@ function vwpm_ajax_create_po_from_transient() {
             'created_at' => current_time('mysql'),
             'updated_at' => current_time('mysql'),
         ),
-        array('%s','%d','%d','%s','%s','%s','%s','%f','%s','%d','%s','%s')
+        array('%s','%d','%d','%s','%s','%s','%s','%s','%f','%s','%d','%s','%s')
     );
 
     if ( false === $inserted ) {
@@ -1406,9 +1822,7 @@ function vwpm_ajax_create_po_from_transient() {
     wp_send_json_success( array( 'message' => 'PO created', 'po_number' => $po_number ) );
 }
 
-/**
- * Get POs (for admin list)
- */
+// Get POs (for admin list)
 add_action( 'wp_ajax_vwpm_get_pos', 'vwpm_ajax_get_pos' );
 function vwpm_ajax_get_pos() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1424,7 +1838,7 @@ function vwpm_ajax_get_pos() {
     wp_send_json_success( array( 'pos' => $rows ) );
 }
 
-// AJAX: Get single PO details by id (for admin view)
+// Get single PO details by id
 add_action( 'wp_ajax_vwpm_get_po', 'vwpm_ajax_get_po' );
 function vwpm_ajax_get_po() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1446,7 +1860,6 @@ function vwpm_ajax_get_po() {
         wp_send_json_error( array( 'message' => 'PO not found' ) );
     }
 
-    // Decode JSON columns if present
     $row['items'] = isset( $row['items'] ) ? json_decode( $row['items'], true ) : array();
     if ( ! is_array( $row['items'] ) ) $row['items'] = array();
 
@@ -1458,9 +1871,8 @@ function vwpm_ajax_get_po() {
 
     wp_send_json_success( array( 'po' => $row ) );
 }
-/**
- * Update PO status / lock
- */
+
+// Update PO status / lock
 add_action( 'wp_ajax_vwpm_update_po_status', 'vwpm_ajax_update_po_status' );
 function vwpm_ajax_update_po_status() {
     check_ajax_referer( 'vwpm_nonce', 'nonce' );
@@ -1495,8 +1907,34 @@ function vwpm_ajax_update_po_status() {
     wp_send_json_success( array( 'message' => 'PO updated' ) );
 }
 
-/* ------------------------------------------------------------------ */
-/* Keep the rest of the AJAX handlers (import/export, supplier CRUD etc.) */
-/* You already had those implemented above in the file — ensure there */
-/* are no duplicate function definitions when you paste this file.     */
-/* ------------------------------------------------------------------ */
+// Save PO data to transient for printing
+add_action( 'wp_ajax_vwpm_save_po_for_print', 'vwpm_ajax_save_po_for_print' );
+function vwpm_ajax_save_po_for_print() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+    
+    $po_data = $_POST['po_data'] ?? array();
+    
+    if ( empty( $po_data ) ) {
+        wp_send_json_error( array( 'message' => 'No PO data provided' ) );
+    }
+    
+    // Convert the database PO format to print format
+    $print_data = array(
+        'product_summary' => isset($po_data['product_summary']) ? $po_data['product_summary'] : array(),
+        'supplier_name' => $po_data['supplier_name'] ?? '',
+        'supplier_email' => $po_data['supplier_email'] ?? '',
+        'items' => isset($po_data['items']) ? $po_data['items'] : array(),
+        'tools' => isset($po_data['tools']) ? $po_data['tools'] : array(),
+        'total_cost' => $po_data['total_cost'] ?? 0,
+        'type' => 'manufactured',
+        'po_number' => $po_data['po_number'] ?? ''
+    );
+    
+    set_transient( 'vwpm_po_' . get_current_user_id(), $print_data, HOUR_IN_SECONDS );
+    
+    wp_send_json_success( array( 'message' => 'PO prepared for printing' ) );
+}
