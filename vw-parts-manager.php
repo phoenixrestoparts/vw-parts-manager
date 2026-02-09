@@ -574,57 +574,16 @@ class VW_Parts_Manager {
             $block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
         }
 
-        // Save PO selection
-        $(document).on('click', '.vwpm-save-po-btn', function(e) {
-            e.preventDefault();
-            var supplierId = $(this).data('supplier-id');
-            var $block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
-            
-            var items = [];
-            $block.find('.vwpm-po-row').each(function() {
-                if ($(this).find('.vwpm-po-include').is(':checked')) {
-                    var $row = $(this);
-                    items.push({
-                        component_id: $row.data('component-id'),
-                        component_name: $row.find('td:eq(1)').text(),
-                        component_number: $row.find('td:eq(2)').text(),
-                        supplier_ref: $row.find('td:eq(3)').text(),
-                        qty: parseFloat($row.find('.vwpm-po-qty').val()) || 0,
-                        unit_price: parseFloat($row.find('.vwpm-po-qty').data('unit-price')) || 0
-                    });
-                }
-            });
-
-            $.ajax({
-                url: vwpm_ajax.ajax_url,
-                type: 'POST',
-                data: {
-                    action: 'vwpm_save_po_selection',
-                    nonce: vwpm_ajax.nonce,
-                    supplier_id: supplierId,
-                    items: items,
-                    tools: [],
-                    products: [],
-                    type: 'manufactured'
-                },
-                success: function(response) {
-                    if (response.success) {
-                        alert('PO selection saved!');
-                    } else {
-                        alert('Error: ' + response.data.message);
-                    }
-                }
-            });
-        });
-
         // Create PO - FIXED to prevent duplicates
 $(document).on('click', '.vwpm-create-po-btn', function(e) {
     e.preventDefault();
+    e.stopImmediatePropagation(); // STOP EVENT BUBBLING
+    
     var $btn = $(this);
     
     // Prevent double-clicking
     if ($btn.prop('disabled')) {
-        return;
+        return false;
     }
     
     $btn.prop('disabled', true).text('Creating...');
@@ -650,6 +609,8 @@ $(document).on('click', '.vwpm-create-po-btn', function(e) {
             $btn.prop('disabled', false).text('Create PO (persist to database)');
         }
     });
+    
+    return false; // PREVENT DEFAULT
 });
 
 // Save PO - UPDATED to show Create/Print buttons after saving
@@ -739,6 +700,7 @@ $(document).on('click', '.vwpm-add-custom-line-btn', function(e) {
     if (!itemName) return;
     
     var itemNumber = prompt('Enter part/item number (optional):', '');
+    var supplierRef = prompt('Enter supplier reference (optional):', '');
     var qty = prompt('Enter quantity:', '1');
     var unitPrice = prompt('Enter unit price (£):', '0');
     
@@ -752,9 +714,9 @@ $(document).on('click', '.vwpm-add-custom-line-btn', function(e) {
     // Add row to table (before the total row)
     var row = '<tr data-component-id="' + customId + '" class="vwpm-po-row vwpm-custom-row" style="background:#fffbcc;">';
     row += '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' + supplierId + '" checked></td>';
-    row += '<td>' + itemName + ' <em>(custom)</em></td>';
+        row += '<td>' + itemName + ' <em>(custom)</em></td>';
     row += '<td>' + itemNumber + '</td>';
-    row += '<td>-</td>';
+    row += '<td>' + (supplierRef || '-') + '</td>';
     row += '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' + qty.toFixed(2) + '" style="width:100px;" data-unit-price="' + unitPrice + '"></td>';
     row += '<td class="vwpm-po-unit">£' + unitPrice.toFixed(2) + '</td>';
     row += '<td class="vwpm-po-line">£' + lineTotal.toFixed(2) + '</td>';
@@ -780,8 +742,12 @@ function recalculateSupplierTotal(supplierId) {
         }
     });
     
-    block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
+      block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
 }
+    });
+    </script>
+    <?php
+    }
     
     // Tool Meta Boxes
     public function add_tool_meta_boxes() {
