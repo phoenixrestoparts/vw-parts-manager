@@ -1904,3 +1904,59 @@ function vwpm_ajax_save_po_for_print() {
     
     wp_send_json_success( array( 'message' => 'PO prepared for printing' ) );
 }
+
+// Delete PO
+add_action( 'wp_ajax_vwpm_delete_po', 'vwpm_ajax_delete_po' );
+function vwpm_ajax_delete_po() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+    
+    $po_id = intval( $_POST['po_id'] ?? 0 );
+    if ( ! $po_id ) {
+        wp_send_json_error( array( 'message' => 'Invalid PO ID' ) );
+    }
+    
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+    
+    // Check if PO is locked
+    $po = $wpdb->get_row( $wpdb->prepare( "SELECT is_locked FROM {$table_pos} WHERE id = %d", $po_id ) );
+    if ( ! $po ) {
+        wp_send_json_error( array( 'message' => 'PO not found' ) );
+    }
+    
+    if ( intval( $po->is_locked ) === 1 ) {
+        wp_send_json_error( array( 'message' => 'Cannot delete a locked PO. Unlock it first.' ) );
+    }
+    
+    $deleted = $wpdb->delete( $table_pos, array( 'id' => $po_id ), array( '%d' ) );
+    
+    if ( false === $deleted ) {
+        wp_send_json_error( array( 'message' => 'Failed to delete PO: ' . $wpdb->last_error ) );
+    }
+    
+    wp_send_json_success( array( 'message' => 'PO deleted' ) );
+}
+
+// Prepare PO for editing
+add_action( 'wp_ajax_vwpm_prepare_po_for_edit', 'vwpm_ajax_prepare_po_for_edit' );
+function vwpm_ajax_prepare_po_for_edit() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+    
+    $po_id = intval( $_POST['po_id'] ?? 0 );
+    if ( ! $po_id ) {
+        wp_send_json_error( array( 'message' => 'Invalid PO ID' ) );
+    }
+    
+    // Store the PO ID for the edit session
+    set_transient( 'vwpm_edit_po_' . get_current_user_id(), $po_id, HOUR_IN_SECONDS );
+    
+    wp_send_json_success( array( 'message' => 'PO ready for edit', 'po_id' => $po_id ) );
+}
