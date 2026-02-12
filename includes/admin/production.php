@@ -147,11 +147,11 @@ $products = get_posts(array(
                     $subtotal += $line_total;
                     
                     echo '<tr data-component-id="' . esc_attr($component_id) . '" class="vwpm-po-row">';
-                    echo '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '" checked></td>';
+                    echo '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '" checked aria-label="Include ' . esc_attr($component_name) . ' in order"></td>';
                     echo '<td>' . esc_html($component_name) . '</td>';
                     echo '<td>' . esc_html($component_number) . '</td>';
                     echo '<td>' . ($supplier_ref ? esc_html($supplier_ref) : '&ndash;') . '</td>';
-                    echo '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' . esc_attr(number_format($qty, 2, '.', '')) . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '"></td>';
+                    echo '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' . esc_attr(number_format($qty, 2, '.', '')) . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '" aria-label="Quantity for ' . esc_attr($component_name) . '"></td>';
                     echo '<td class="vwpm-po-unit">£' . esc_html(number_format($unit_price, 2)) . '</td>';
                     echo '<td class="vwpm-po-line">£' . esc_html(number_format($line_total, 2)) . '</td>';
                     echo '</tr>';
