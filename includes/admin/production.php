@@ -151,30 +151,30 @@ $products = get_posts(array(
                     echo '<td>' . esc_html($component_name) . '</td>';
                     echo '<td>' . esc_html($component_number) . '</td>';
                     echo '<td>' . ($supplier_ref ? esc_html($supplier_ref) : '&ndash;') . '</td>';
-                    echo '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' . number_format($qty, 2, '.', '') . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '"></td>';
-                    echo '<td class="vwpm-po-unit">£' . number_format($unit_price, 2) . '</td>';
-                    echo '<td class="vwpm-po-line">£' . number_format($line_total, 2) . '</td>';
+                    echo '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' . esc_attr(number_format($qty, 2, '.', '')) . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '"></td>';
+                    echo '<td class="vwpm-po-unit">£' . esc_html(number_format($unit_price, 2)) . '</td>';
+                    echo '<td class="vwpm-po-line">£' . esc_html(number_format($line_total, 2)) . '</td>';
                     echo '</tr>';
                 }
                 
                 // Subtotal row
                 echo '<tr class="vwpm-supplier-subtotal" style="background:#f5f5f5;font-weight:bold;">';
                 echo '<td colspan="6" style="text-align:right;padding:10px;">Subtotal:</td>';
-                echo '<td class="vwpm-supplier-subtotal-value" style="padding:10px;">£' . number_format($subtotal, 2) . '</td>';
+                echo '<td class="vwpm-supplier-subtotal-value" style="padding:10px;">£' . esc_html(number_format($subtotal, 2)) . '</td>';
                 echo '</tr>';
                 
                 // VAT row
                 $vat = $vat_enabled ? $subtotal * 0.20 : 0;
                 echo '<tr class="vwpm-supplier-vat" style="background:#f9f9f9;' . ($vat_enabled ? '' : 'display:none;') . '">';
                 echo '<td colspan="6" style="text-align:right;padding:10px;">VAT (20%):</td>';
-                echo '<td class="vwpm-supplier-vat-value" style="padding:10px;">£' . number_format($vat, 2) . '</td>';
+                echo '<td class="vwpm-supplier-vat-value" style="padding:10px;">£' . esc_html(number_format($vat, 2)) . '</td>';
                 echo '</tr>';
                 
                 // Grand Total row
                 $grand_total = $subtotal + $vat;
                 echo '<tr class="vwpm-supplier-total" style="background:#e8f4f8;font-weight:bold;font-size:1.1em;">';
                 echo '<td colspan="6" style="text-align:right;padding:10px;">Grand Total:</td>';
-                echo '<td class="vwpm-supplier-total-value" style="padding:10px;">£' . number_format($grand_total, 2) . '</td>';
+                echo '<td class="vwpm-supplier-total-value" style="padding:10px;">£' . esc_html(number_format($grand_total, 2)) . '</td>';
                 echo '</tr>';
                 
                 echo '</tbody></table>';
