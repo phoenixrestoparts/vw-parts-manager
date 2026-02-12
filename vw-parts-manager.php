@@ -226,6 +226,15 @@ class VW_Parts_Manager {
             array($this, 'render_production_page')
         );
         
+         add_submenu_page(
+            'vw-parts-manager',
+            'Create Custom PO',
+            'Create Custom PO',
+            'manage_options',
+            'vwpm-custom-po',
+            array($this, 'render_custom_po_page')
+        );
+        
         add_submenu_page(
             'vw-parts-manager',
             'Import/Export',
@@ -714,7 +723,7 @@ $(document).on('click', '.vwpm-add-custom-line-btn', function(e) {
     // Add row to table (before the total row)
     var row = '<tr data-component-id="' + customId + '" class="vwpm-po-row vwpm-custom-row" style="background:#fffbcc;">';
     row += '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' + supplierId + '" checked></td>';
-        row += '<td>' + itemName + ' <em>(custom)</em></td>';
+        row += '<td>' + itemName + '</td>';
     row += '<td>' + itemNumber + '</td>';
     row += '<td>' + (supplierRef || '-') + '</td>';
     row += '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' + qty.toFixed(2) + '" style="width:100px;" data-unit-price="' + unitPrice + '"></td>';
@@ -1218,6 +1227,9 @@ function recalculateSupplierTotal(supplierId) {
     public function render_purchase_orders_page() {
         include VWPM_PLUGIN_DIR . 'includes/admin/purchase-orders.php';
     }
+        public function render_custom_po_page() {
+        include VWPM_PLUGIN_DIR . 'includes/admin/custom-po.php';
+    }
 }
 new VW_Parts_Manager();
 
@@ -1315,106 +1327,217 @@ function vwpm_handle_print_po() {
     $type = isset( $po_data['type'] ) ? $po_data['type'] : 'manufactured';
     $supplier_name = $po_data['supplier_name'] ?? '';
     $supplier_email = $po_data['supplier_email'] ?? '';
+    $po_number = $po_data['po_number'] ?? 'DRAFT-' . date('YmdHis');
 
     header('Content-Type: text/html; charset=utf-8');
     ?>
-    <!DOCTYPE html>
-    <html lang="en">
-    <head>
-        <meta charset="UTF-8">
-        <title>Purchase Order</title>
-        <style>
-            @page { size: A4; margin: 15mm; }
-            body { font-family: Arial, sans-serif; font-size: 12px; color: #000; margin: 0; padding: 20px; }
-            h1 { text-align: center; margin-bottom: 20px; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { border: 1px solid #000; padding: 8px; text-align: left; }
-            th { background: #f2f2f2; font-weight: bold; }
-            .text-right { text-align: right; }
-            .totals { font-weight: bold; background: #f9f9f9; }
-            .print-btn { background: #0073aa; color: #fff; padding: 10px 20px; border: none; cursor: pointer; margin-bottom: 20px; }
-            @media print { .print-btn { display: none; } }
-        </style>
-    </head>
-    <body>
-        <button class="print-btn" onclick="window.print()">PRINT / SAVE AS PDF</button>
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Purchase Order <?php echo esc_html($po_number); ?></title>
+      <style>
+        @page { size: A4 landscape; margin: 15mm; }
+        html, body { margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; font-size: 11px; color: #000; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; }
+        .logo img { max-width: 220px; }
+        .logo p { margin: 10px 0 0 0; line-height: 1.6; }
+        .po-title { text-align: right; }
+        .po-title h1 { margin: 0 0 10px 0; font-size: 28px; }
+        .addresses { display: flex; justify-content: space-between; margin-top: 20px; }
+        .address-box { width: 48%; border: 1px solid #ccc; padding: 8px; min-height: 100px; }
+        .address-box strong { display: block; margin-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; table-layout: fixed; }
+        th, td { border: 1px solid #ccc; padding: 6px; }
+        th { background: #f2f2f2; font-weight: bold; }
+        
+        /* Column widths - optimized for landscape */
+        table th:nth-child(1), table td:nth-child(1) { width: 30%; } /* Item */
+        table th:nth-child(2), table td:nth-child(2) { width: 15%; } /* Part Number */
+        table th:nth-child(3), table td:nth-child(3) { width: 15%; } /* Supplier Ref */
+        table th:nth-child(4), table td:nth-child(4) { width: 8%; }  /* Qty Per Unit */
+        table th:nth-child(5), table td:nth-child(5) { width: 8%; }  /* Total Qty */
+        table th:nth-child(6), table td:nth-child(6) { width: 10%; } /* Unit Price */
+        table th:nth-child(7), table td:nth-child(7) { width: 10%; } /* Line Total */
+        
+        /* For ready-made (no Qty Per Unit column) */
+        table.no-qty-per-unit th:nth-child(1), table.no-qty-per-unit td:nth-child(1) { width: 35%; }
+        table.no-qty-per-unit th:nth-child(2), table.no-qty-per-unit td:nth-child(2) { width: 20%; }
+        table.no-qty-per-unit th:nth-child(3), table.no-qty-per-unit td:nth-child(3) { width: 20%; }
+        table.no-qty-per-unit th:nth-child(4), table.no-qty-per-unit td:nth-child(4) { width: 8%; }
+        table.no-qty-per-unit th:nth-child(5), table.no-qty-per-unit td:nth-child(5) { width: 10%; }
+        table.no-qty-per-unit th:nth-child(6), table.no-qty-per-unit td:nth-child(6) { width: 10%; }
+        
+        .right { text-align: right; }
+        .totals { width: 40%; float: right; margin-top: 20px; page-break-inside: avoid; }
+        .totals table { margin: 0; table-layout: auto; }
+        .print-bar { text-align: right; margin-bottom: 10px; }
+        .print-bar button { background: #0073aa; color: #fff; padding: 10px 20px; border: none; cursor: pointer; font-size: 14px; }
+        .footer { margin-top: 40px; font-size: 10px; clear: both; page-break-inside: avoid; }
+        @media print { .print-bar { display: none; } }
+    </style>
+</head>
+<body>
+<div class="phoenix-po">
 
-        <h1>Purchase Order</h1>
+<div class="print-bar">
+    <button onclick="window.print()">Print / Save as PDF</button>
+</div>
 
-        <?php if ( $product_name !== '' ): ?>
-            <p><strong>Product(s):</strong> <?php echo esc_html( $product_name ); ?></p>
+<div class="header">
+    <div class="logo">
+        <img src="https://stg-be925n.elementor.cloud/wp-content/uploads/2025/07/phoneix-logo-website-01-scaled.png" alt="Phoenix Restoration Parts">
+        <p>
+            Units 11, Springfield Farm<br>
+            Nuneaton Road, Ansley, Nuneaton<br>
+            Warwickshire CV10 0QU<br><br>
+            VAT No: 491851758<br>
+            Company No: 16305577
+        </p>
+    </div>
+
+    <div class="po-title">
+        <h1>PURCHASE ORDER</h1>
+        <strong>PO Number:</strong> <?php echo esc_html($po_number); ?><br>
+        <strong>PO Date:</strong> <?php echo date('d/m/Y H:i'); ?><br>
+        <?php if ($product_name): ?>
+            <strong>Product(s):</strong> <?php echo esc_html($product_name); ?><br>
         <?php endif; ?>
-        <?php if ( $quantity !== '' ): ?>
-            <p><strong>Quantity (total units):</strong> <?php echo esc_html( $quantity ); ?></p>
+        <?php if ($quantity): ?>
+            <strong>Quantity:</strong> <?php echo esc_html($quantity); ?><br>
         <?php endif; ?>
-        <p><strong>Date:</strong> <?php echo date('d/m/Y H:i'); ?></p>
+    </div>
+</div>
 
-        <h2>Supplier: <?php echo esc_html( $supplier_name ); ?></h2>
-        <?php if ( ! empty( $supplier_email ) ): ?>
-            <p><strong>Email:</strong> <?php echo esc_html( $supplier_email ); ?></p>
+<div class="addresses">
+    <div class="address-box">
+        <strong>Supplier Details</strong>
+        <?php echo esc_html($supplier_name); ?><br>
+        <?php if ($supplier_email): ?>
+            <strong>Email:</strong> <?php echo esc_html($supplier_email); ?><br>
         <?php endif; ?>
+    </div>
 
+    <div class="address-box">
+        <strong>Deliver To</strong>
+        Phoenix Restoration Parts<br>
+        Units 11, Springfield Farm<br>
+        Nuneaton Road, Ansley<br>
+        Nuneaton, Warwickshire<br>
+        CV10 0QU
+    </div>
+</div>
+
+<table<?php echo ($type === 'manufactured') ? '' : ' class="no-qty-per-unit"'; ?>>
+    <thead>
+        <tr>
+            <th>Item</th>
+            <th>Part Number</th>
+            <th>Supplier Ref</th>
+            <?php if ($type === 'manufactured'): ?>
+                <th class="right">Qty Per Unit</th>
+            <?php endif; ?>
+            <th class="right">Total Qty</th>
+            <th class="right">Unit Price</th>
+            <th class="right">Line Total</th>
+        </tr>
+    </thead>
+    <tbody>
+        <?php foreach ($items as $item): ?>
+            <tr>
+                <td><?php echo esc_html($item['component_name'] ?? ''); ?></td>
+                <td><?php echo esc_html($item['component_number'] ?? ''); ?></td>
+                <td><?php echo esc_html($item['supplier_ref'] ?? '-'); ?></td>
+                <?php if ($type === 'manufactured'): ?>
+                    <td class="right"><?php echo number_format($item['qty_per_unit'] ?? 0, 2); ?></td>
+                <?php endif; ?>
+                <td class="right"><?php echo number_format($item['total_qty'] ?? 0, 2); ?></td>
+                <td class="right">£<?php echo number_format($item['unit_price'] ?? 0, 2); ?></td>
+                <td class="right">£<?php echo number_format($item['line_total'] ?? 0, 2); ?></td>
+            </tr>
+        <?php endforeach; ?>
+    </tbody>
+</table>
+
+<div class="totals">
+    <table>
+        <?php
+        $vat_enabled = isset($po_data['vat_enabled']) ? $po_data['vat_enabled'] : true;
+        $subtotal = isset($po_data['subtotal']) ? floatval($po_data['subtotal']) : $total_cost;
+        $vat_amount = isset($po_data['vat_amount']) ? floatval($po_data['vat_amount']) : 0;
+        $grand_total = isset($po_data['grand_total']) ? floatval($po_data['grand_total']) : $total_cost;
+        
+        // If no VAT data stored, calculate from total_cost
+        if (!isset($po_data['vat_enabled'])) {
+            $vat_enabled = true;
+            $subtotal = $total_cost;
+            $vat_amount = $subtotal * 0.20;
+            $grand_total = $subtotal + $vat_amount;
+        }
+        ?>
+        <tr>
+            <td>Subtotal (excl. VAT)</td>
+            <td class="right">£<?php echo number_format($subtotal, 2); ?></td>
+        </tr>
+        <?php if ($vat_enabled): ?>
+        <tr>
+            <td>VAT (20%)</td>
+            <td class="right">£<?php echo number_format($vat_amount, 2); ?></td>
+        </tr>
+        <?php else: ?>
+        <tr>
+            <td>VAT</td>
+            <td class="right">£0.00 <em>(International)</em></td>
+        </tr>
+        <?php endif; ?>
+        <tr>
+            <td><strong>Grand Total (inc. VAT)</strong></td>
+            <td class="right"><strong>£<?php echo number_format($grand_total, 2); ?></strong></td>
+        </tr>
+    </table>
+</div>
+
+<?php if (!empty($po_data['notes'])): ?>
+<div style="margin-top: 20px; padding: 10px; background: #f9f9f9; border: 1px solid #ddd;">
+    <strong>PO Notes:</strong><br>
+    <?php echo nl2br(esc_html($po_data['notes'])); ?>
+</div>
+<?php endif; ?>
+<?php if (!empty($po_data['tools'])): ?>
+    <div style="clear:both; margin-top: 20px;">
+        <h3>Tools Required for Production</h3>
         <table>
             <thead>
                 <tr>
-                    <th>Item</th>
-                    <th>Part Number</th>
-                    <?php if ($type === 'manufactured'): ?>
-                        <th>Qty Per Unit</th>
-                    <?php endif; ?>
-                    <th>Total Qty</th>
-                    <th class="text-right">Unit Price</th>
-                    <th class="text-right">Total</th>
+                    <th>Tool Name</th>
+                    <th>Tool Number</th>
+                    <th>Location</th>
                 </tr>
             </thead>
             <tbody>
-                <?php foreach ($items as $item): ?>
+                <?php foreach ($po_data['tools'] as $tool): ?>
                     <tr>
-                        <td><?php echo esc_html($item['component_name'] ?? ''); ?></td>
-                        <td><?php echo esc_html($item['component_number'] ?? ''); ?></td>
-                        <?php if ($type === 'manufactured'): ?>
-                            <td><?php echo number_format($item['qty_per_unit'] ?? 0, 2); ?></td>
-                        <?php endif; ?>
-                        <td><?php echo number_format($item['total_qty'] ?? 0, 2); ?></td>
-                        <td class="text-right">£<?php echo number_format($item['unit_price'] ?? 0, 2); ?></td>
-                        <td class="text-right">£<?php echo number_format($item['line_total'] ?? 0, 2); ?></td>
+                        <td><?php echo esc_html($tool['name'] ?? ''); ?></td>
+                        <td><?php echo esc_html($tool['number'] ?? ''); ?></td>
+                        <td><?php echo esc_html($tool['location'] ?? ''); ?></td>
                     </tr>
                 <?php endforeach; ?>
-                <tr class="totals">
-                    <td colspan="<?php echo ($type === 'manufactured') ? '5' : '4'; ?>" class="text-right">
-                        <strong>Total:</strong>
-                    </td>
-                    <td class="text-right">
-                        <strong>£<?php echo number_format($total_cost, 2); ?></strong>
-                    </td>
-                </tr>
             </tbody>
         </table>
+    </div>
+<?php endif; ?>
 
-        <?php if (!empty($po_data['tools'])): ?>
-            <h2>Tools Required</h2>
-            <table>
-                <thead>
-                    <tr>
-                        <th>Tool Name</th>
-                        <th>Tool Number</th>
-                        <th>Location</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($po_data['tools'] as $tool): ?>
-                        <tr>
-                            <td><?php echo esc_html($tool['name'] ?? ''); ?></td>
-                            <td><?php echo esc_html($tool['number'] ?? ''); ?></td>
-                            <td><?php echo esc_html($tool['location'] ?? ''); ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php endif; ?>
+<div class="footer">
+    <p>
+        Sort Code 20-49-17 / Account No 90254517 / IBAN GB73 BUKB 2049 1790 2545 17 / SWIF BIC BUKBGB22<br>
+        VAT No 491851758 / Company No 16305577
+    </p>
+</div>
 
-    </body>
-    </html>
+</div>
+</body>
+</html>
     <?php
     exit;
 }
@@ -1423,6 +1546,10 @@ function vwpm_handle_print_po() {
 function vwpm_ajax_calculate_production() {
     check_ajax_referer('vwpm_nonce', 'nonce');
     global $wpdb;
+    
+        // Check if we're in merge mode (editing existing PO)
+    $merge_mode = isset($_POST['merge_mode']) && $_POST['merge_mode'];
+    $existing_items = isset($_POST['existing_items']) && is_array($_POST['existing_items']) ? $_POST['existing_items'] : array();
 
     $products = array();
 
@@ -1566,8 +1693,78 @@ function vwpm_ajax_calculate_production() {
         }
     }
 
+        // If in merge mode, add existing items back to requirements
+    if ($merge_mode && !empty($existing_items)) {
+        foreach ($existing_items as $existing) {
+            // Determine which supplier this item belongs to
+            $supplier_id = 0;
+            
+            // Try to match by component_id if it's a real component
+            if (isset($existing['component_id']) && is_numeric($existing['component_id'])) {
+                $component_id = intval($existing['component_id']);
+                $supplier_id = intval(get_post_meta($component_id, '_vwpm_supplier_id', true));
+            }
+            
+            // If no supplier found, add to first available or create new entry
+            if (!$supplier_id && !empty($requirements)) {
+                $supplier_id = array_key_first($requirements);
+            }
+            
+            // Ensure this supplier exists in requirements
+            if ($supplier_id && !isset($requirements[$supplier_id])) {
+                $supplier = $wpdb->get_row($wpdb->prepare("SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d", $supplier_id));
+                $requirements[$supplier_id] = array(
+                    'supplier_id' => $supplier_id,
+                    'supplier_name' => $supplier ? $supplier->name : 'Unknown',
+                    'supplier_email' => $supplier ? $supplier->email : '',
+                    'items' => array()
+                );
+            }
+            
+            if ($supplier_id) {
+                $item_key = $existing['component_id'];
+                
+                // Check if this item already exists in new calculation (merge quantities)
+                $found = false;
+                foreach ($requirements[$supplier_id]['items'] as $key => $item) {
+                    if ($item['component_id'] == $item_key) {
+                        // Item exists - add quantities together
+                        $requirements[$supplier_id]['items'][$key]['total_qty'] += floatval($existing['total_qty']);
+                        $requirements[$supplier_id]['items'][$key]['line_total'] = 
+                            $requirements[$supplier_id]['items'][$key]['total_qty'] * 
+                            $requirements[$supplier_id]['items'][$key]['unit_price'];
+                        $found = true;
+                        break;
+                    }
+                }
+                
+                // If not found, add as new item
+                if (!$found) {
+                    $requirements[$supplier_id]['items'][$item_key] = array(
+                        'component_id' => $existing['component_id'],
+                        'component_name' => $existing['component_name'],
+                        'component_number' => $existing['component_number'],
+                        'qty_per_unit' => floatval($existing['qty_per_unit']),
+                        'total_qty' => floatval($existing['total_qty']),
+                        'unit_price' => floatval($existing['unit_price']),
+                        'line_total' => floatval($existing['total_qty']) * floatval($existing['unit_price']),
+                        'supplier_ref' => $existing['supplier_ref']
+                    );
+                }
+            }
+        }
+        
+        // Recalculate grand total
+        $grand_total = 0;
+        foreach ($requirements as $supplier_data) {
+            foreach ($supplier_data['items'] as $item) {
+                $grand_total += $item['line_total'];
+            }
+        }
+    }
+
     foreach ( $requirements as &$sup ) {
-        $sup['items'] = array_values( $sup['items'] );
+        $sup['items'] = array_values ( $sup['items'] );
     }
     unset( $sup );
 
@@ -1714,6 +1911,12 @@ function vwpm_ajax_save_po_selection() {
     global $wpdb;
     $supplier = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d", intval($supplier_id) ) );
 
+       $vat_enabled = isset( $_POST['vat_enabled'] ) ? (bool) $_POST['vat_enabled'] : true;
+    $subtotal = isset( $_POST['subtotal'] ) ? floatval( $_POST['subtotal'] ) : $supplier_total;
+    $vat_amount = isset( $_POST['vat_amount'] ) ? floatval( $_POST['vat_amount'] ) : ($subtotal * 0.20);
+    $grand_total = isset( $_POST['grand_total'] ) ? floatval( $_POST['grand_total'] ) : ($subtotal + $vat_amount);
+    $notes = isset( $_POST['notes'] ) ? sanitize_textarea_field( $_POST['notes'] ) : '';
+
     $po_data = array(
         'product_summary' => $products,
         'product_name'    => isset( $products[0]['title'] ) ? sanitize_text_field( $products[0]['title'] ) : '',
@@ -1725,6 +1928,11 @@ function vwpm_ajax_save_po_selection() {
         'type'            => $type,
         'total_cost'      => $supplier_total,
         'tools'           => $tools,
+        'vat_enabled'     => $vat_enabled,
+        'subtotal'        => $subtotal,
+        'vat_amount'      => $vat_amount,
+        'grand_total'     => $grand_total,
+        'notes'           => $notes,
     );
 
     set_transient( 'vwpm_po_' . get_current_user_id(), $po_data, HOUR_IN_SECONDS );
@@ -1959,4 +2167,92 @@ function vwpm_ajax_prepare_po_for_edit() {
     set_transient( 'vwpm_edit_po_' . get_current_user_id(), $po_id, HOUR_IN_SECONDS );
     
     wp_send_json_success( array( 'message' => 'PO ready for edit', 'po_id' => $po_id ) );
+}
+
+// Update existing PO
+add_action( 'wp_ajax_vwpm_update_po', 'vwpm_ajax_update_po' );
+function vwpm_ajax_update_po() {
+    check_ajax_referer( 'vwpm_nonce', 'nonce' );
+    
+    if ( ! current_user_can( 'manage_options' ) ) {
+        wp_send_json_error( array( 'message' => 'Permission denied' ) );
+    }
+    
+    $po_id = intval( $_POST['po_id'] ?? 0 );
+    $supplier_id = intval( $_POST['supplier_id'] ?? 0 );
+    $items_raw = $_POST['items'] ?? array();
+    $tools = $_POST['tools'] ?? array();
+    $products = $_POST['products'] ?? array();
+    $type = sanitize_text_field( $_POST['type'] ?? 'manufactured' );
+    
+    if ( ! $po_id || ! $supplier_id || ! is_array( $items_raw ) ) {
+        wp_send_json_error( array( 'message' => 'Invalid data' ) );
+    }
+    
+    global $wpdb;
+    $table_pos = $wpdb->prefix . 'vwpm_pos';
+    
+    // Check if PO exists
+    $existing_po = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$table_pos} WHERE id = %d", $po_id ) );
+    if ( ! $existing_po ) {
+        wp_send_json_error( array( 'message' => 'PO not found' ) );
+    }
+    
+    // Check if PO is locked
+    if ( intval( $existing_po->is_locked ) === 1 ) {
+        wp_send_json_error( array( 'message' => 'Cannot update a locked PO. Unlock it first.' ) );
+    }
+    
+    // Process items
+    $po_items = array();
+    $total_cost = 0.0;
+    foreach ( $items_raw as $it ) {
+        $qty = floatval( $it['qty'] ?? 0 );
+        $unit = floatval( $it['unit_price'] ?? 0 );
+        $line = $unit * $qty;
+        
+        $po_items[] = array(
+            'component_name'   => sanitize_text_field( $it['component_name'] ?? '' ),
+            'component_number' => sanitize_text_field( $it['component_number'] ?? '' ),
+            'qty_per_unit'     => isset( $it['qty_per_unit'] ) ? floatval( $it['qty_per_unit'] ) : 1,
+            'total_qty'        => $qty,
+            'unit_price'       => $unit,
+            'line_total'       => $line,
+            'supplier_ref'     => sanitize_text_field( $it['supplier_ref'] ?? '' ),
+            'component_id'     => isset( $it['component_id'] ) ? sanitize_text_field( $it['component_id'] ) : '',
+        );
+        
+        $total_cost += $line;
+    }
+    
+    // Get supplier info
+    $supplier = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d", $supplier_id ) );
+    
+    $items_json = wp_json_encode( $po_items );
+    $tools_json = wp_json_encode( $tools );
+    $product_summary_json = wp_json_encode( $products );
+    
+    // Update PO
+    $updated = $wpdb->update(
+        $table_pos,
+        array(
+            'supplier_id' => $supplier_id,
+            'supplier_name' => $supplier ? $supplier->name : '',
+            'supplier_email' => $supplier ? $supplier->email : '',
+            'items' => $items_json,
+            'tools' => $tools_json,
+            'product_summary' => $product_summary_json,
+            'total_cost' => $total_cost,
+            'updated_at' => current_time('mysql'),
+        ),
+        array( 'id' => $po_id ),
+        array( '%d', '%s', '%s', '%s', '%s', '%s', '%f', '%s' ),
+        array( '%d' )
+    );
+    
+    if ( false === $updated ) {
+        wp_send_json_error( array( 'message' => 'Failed to update PO: ' . $wpdb->last_error ) );
+    }
+    
+    wp_send_json_success( array( 'message' => 'PO updated', 'po_id' => $po_id ) );
 }
