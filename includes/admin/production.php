@@ -100,7 +100,98 @@ $products = get_posts(array(
     </div>
 
     <div id="vwpm-results">
-                <?php if ($edit_po_id && $edit_po_data): ?>
+        <?php if ($edit_po_id && $edit_po_data): ?>
+            <div class="notice notice-info" style="background:#d7f0ff; border-left:4px solid #0073aa;">
+                <p><strong>📝 Editing Mode:</strong> The products from this PO are loaded above. You can add more products, remove products, or modify quantities. Click "Recalculate Requirements" to update the component list below.</p>
+            </div>
+            
+            <div class="notice notice-warning" style="background:#fff8e5; border-left:4px solid #ffb900; margin-top:15px;">
+                <p><strong>ℹ️ Instructions:</strong> Review the components below, adjust quantities as needed, and click "Update PO" to save your changes.</p>
+            </div>
+            
+            <?php
+            // Display existing PO items in edit mode
+            if (!empty($edit_po_data['items']) && is_array($edit_po_data['items'])) {
+                $vat_enabled = !empty($edit_po_data['vat_enabled']) ? true : false;
+                $subtotal = 0;
+                
+                echo '<div class="vwpm-supplier-block" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '" style="margin:20px 0;padding:15px;border:1px solid #ddd;background:#fff;">';
+                echo '<h3>Current Purchase Order Components</h3>';
+                echo '<p><strong>Supplier:</strong> ' . esc_html($edit_po_data['supplier_name']) . '</p>';
+                if (!empty($edit_po_data['supplier_email'])) {
+                    echo '<p><strong>Email:</strong> ' . esc_html($edit_po_data['supplier_email']) . '</p>';
+                }
+                
+                echo '<table class="vwpm-results-table widefat" style="width:100%;border-collapse:collapse;margin-top:15px;">';
+                echo '<thead><tr>';
+                echo '<th style="width:40px;text-align:center;">Select</th>';
+                echo '<th>Item Name</th>';
+                echo '<th>Part Number</th>';
+                echo '<th>Supplier Ref</th>';
+                echo '<th style="width:120px;">Quantity</th>';
+                echo '<th style="width:110px;">Unit Price</th>';
+                echo '<th style="width:110px;">Line Total</th>';
+                echo '</tr></thead>';
+                echo '<tbody>';
+                
+                foreach ($edit_po_data['items'] as $item) {
+                    $component_id = isset($item['component_id']) ? $item['component_id'] : '';
+                    $component_name = isset($item['component_name']) ? $item['component_name'] : '';
+                    $component_number = isset($item['component_number']) ? $item['component_number'] : '';
+                    $supplier_ref = isset($item['supplier_ref']) ? $item['supplier_ref'] : '';
+                    $qty = isset($item['total_qty']) ? floatval($item['total_qty']) : 0;
+                    $unit_price = isset($item['unit_price']) ? floatval($item['unit_price']) : 0;
+                    $line_total = $qty * $unit_price;
+                    $qty_per_unit = isset($item['qty_per_unit']) ? floatval($item['qty_per_unit']) : 1;
+                    
+                    $subtotal += $line_total;
+                    
+                    echo '<tr data-component-id="' . esc_attr($component_id) . '" class="vwpm-po-row">';
+                    echo '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '" checked></td>';
+                    echo '<td>' . esc_html($component_name) . '</td>';
+                    echo '<td>' . esc_html($component_number) . '</td>';
+                    echo '<td>' . ($supplier_ref ? esc_html($supplier_ref) : '&ndash;') . '</td>';
+                    echo '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' . number_format($qty, 2, '.', '') . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '"></td>';
+                    echo '<td class="vwpm-po-unit">£' . number_format($unit_price, 2) . '</td>';
+                    echo '<td class="vwpm-po-line">£' . number_format($line_total, 2) . '</td>';
+                    echo '</tr>';
+                }
+                
+                // Subtotal row
+                echo '<tr class="vwpm-supplier-subtotal" style="background:#f5f5f5;font-weight:bold;">';
+                echo '<td colspan="6" style="text-align:right;padding:10px;">Subtotal:</td>';
+                echo '<td class="vwpm-supplier-subtotal-value" style="padding:10px;">£' . number_format($subtotal, 2) . '</td>';
+                echo '</tr>';
+                
+                // VAT row
+                $vat = $vat_enabled ? $subtotal * 0.20 : 0;
+                echo '<tr class="vwpm-supplier-vat" style="background:#f9f9f9;' . ($vat_enabled ? '' : 'display:none;') . '">';
+                echo '<td colspan="6" style="text-align:right;padding:10px;">VAT (20%):</td>';
+                echo '<td class="vwpm-supplier-vat-value" style="padding:10px;">£' . number_format($vat, 2) . '</td>';
+                echo '</tr>';
+                
+                // Grand Total row
+                $grand_total = $subtotal + $vat;
+                echo '<tr class="vwpm-supplier-total" style="background:#e8f4f8;font-weight:bold;font-size:1.1em;">';
+                echo '<td colspan="6" style="text-align:right;padding:10px;">Grand Total:</td>';
+                echo '<td class="vwpm-supplier-total-value" style="padding:10px;">£' . number_format($grand_total, 2) . '</td>';
+                echo '</tr>';
+                
+                echo '</tbody></table>';
+                
+                // Action buttons
+                echo '<div style="margin-top:15px;">';
+                echo '<button class="button button-primary vwpm-update-po-btn" data-po-id="' . esc_attr($edit_po_id) . '" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '">Update PO (Save Changes)</button> ';
+                echo '<button class="button vwpm-print-po-btn" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '">Print/PDF (Current State)</button> ';
+                echo '<button class="button vwpm-add-custom-line-btn" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '">+ Add Custom Line</button> ';
+                echo '<button class="button vwpm-add-shipping-btn" data-supplier-id="' . esc_attr($edit_po_data['supplier_id']) . '">+ Add Shipping</button> ';
+                echo '<a href="' . admin_url('admin.php?page=vwpm-purchase-orders') . '" class="button">Cancel &amp; Return to List</a>';
+                echo '</div>';
+                
+                echo '</div>';
+            }
+            ?>
+            
             <script type="text/javascript">
             // Pre-populate products from existing PO
             jQuery(document).ready(function($) {
@@ -121,16 +212,14 @@ $products = get_posts(array(
                         <?php endif; ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
+                
+                // Trigger initial summary update after products are loaded
+                setTimeout(function() {
+                    $('#calculate-production').trigger('click');
+                }, <?php echo (count($edit_po_data['product_summary']) * 100 + 200); ?>);
             });
             </script>
         <?php endif; ?>
-    </div>
-
-    <div id="vwpm-results">
-        <?php if ($edit_po_id && $edit_po_data): ?>
-            <div class="notice notice-info" style="background:#d7f0ff; border-left:4px solid #0073aa;">
-                <p><strong>📝 Editing Mode:</strong> The products from this PO are loaded above. You can add more products, remove products, or modify quantities. Click "Recalculate Requirements" to update the component list below.</p>
-            </div>
     </div>
 </div>
 
