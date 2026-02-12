@@ -212,11 +212,6 @@ $products = get_posts(array(
                         <?php endif; ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
-                
-                // Trigger initial summary update after products are loaded
-                setTimeout(function() {
-                    $('#calculate-production').trigger('click');
-                }, <?php echo (count($edit_po_data['product_summary']) * 100 + 200); ?>);
             });
             </script>
         <?php endif; ?>
