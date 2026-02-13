@@ -248,7 +248,7 @@ $products = get_posts(array(
                                     console.error('Select2 initialization timeout for product ID <?php echo $prod_id; ?>');
                                 }
                             }, SELECT2_CHECK_INTERVAL);
-                        }, <?php echo ($index * PRODUCT_LOAD_DELAY); ?>);
+                        }, PRODUCT_LOAD_DELAY * <?php echo $index; ?>);
                         <?php endif; ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
