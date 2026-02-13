@@ -193,26 +193,53 @@ $products = get_posts(array(
             ?>
             
             <script type="text/javascript">
-            // Pre-populate products from existing PO
-            jQuery(document).ready(function($) {
-                <?php if (!empty($edit_po_data['product_summary'])): ?>
-                    <?php foreach ($edit_po_data['product_summary'] as $index => $prod): ?>
-                        <?php 
-                        $prod_id = isset($prod['product_id']) ? intval($prod['product_id']) : 0;
-                        $prod_qty = isset($prod['quantity']) ? floatval($prod['quantity']) : 1;
-                        if ($prod_id): 
-                        ?>
-                        // Add product row for existing product
-                        setTimeout(function() {
-                            $('#add-product-row').trigger('click');
-                            var lastRow = $('#products-list tr:last');
+           // Pre-populate products from existing PO
+jQuery(document).ready(function($) {
+    <?php if (!empty($edit_po_data['product_summary'])): ?>
+        // Show loading message
+        $('#products-added-summary').show().find('h3').text('Loading products from PO...');
+        
+        var totalProducts = <?php echo count($edit_po_data['product_summary']); ?>;
+        var loadedProducts = 0;
+        
+        <?php foreach ($edit_po_data['product_summary'] as $index => $prod): ?>
+            <?php 
+            $prod_id = isset($prod['product_id']) ? intval($prod['product_id']) : 0;
+            $prod_qty = isset($prod['quantity']) ? floatval($prod['quantity']) : 1;
+            if ($prod_id): 
+            ?>
+            // Add product row for existing product
+            setTimeout(function() {
+                $('#add-product-row').trigger('click');
+                var lastRow = $('#products-list tr:last');
+                
+                // Wait for Select2 to initialize before setting value
+                var checkSelect2Ready = setInterval(function() {
+                    if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
+                        clearInterval(checkSelect2Ready);
+                        
+                        // Check if product exists in dropdown
+                        var productOption = lastRow.find('.product-select option[value="<?php echo $prod_id; ?>"]');
+                        if (productOption.length > 0) {
                             lastRow.find('.product-select').val(<?php echo $prod_id; ?>).trigger('change');
                             lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
-                        }, <?php echo ($index * 100); ?>);
-                        <?php endif; ?>
-                    <?php endforeach; ?>
-                <?php endif; ?>
-            });
+                        } else {
+                            console.warn('Product ID <?php echo $prod_id; ?> not found in dropdown');
+                            lastRow.find('.remove-product-row').trigger('click');
+                        }
+                        
+                        // Update counter
+                        loadedProducts++;
+                        if (loadedProducts === totalProducts) {
+                            $('#products-added-summary').find('h3').text('Products Added to This Order:');
+                        }
+                    }
+                }, 50);
+            }, <?php echo ($index * 300); ?>); // Increased from 100ms to 300ms
+            <?php endif; ?>
+        <?php endforeach; ?>
+    <?php endif; ?>
+});
             </script>
         <?php endif; ?>
     </div>
