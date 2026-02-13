@@ -196,6 +196,28 @@ $products = get_posts(array(
             // Pre-populate products from existing PO
             jQuery(document).ready(function($) {
                 <?php if (!empty($edit_po_data['product_summary'])): ?>
+                    // Configuration constants
+                    const SELECT2_CHECK_INTERVAL = 50;  // Check every 50ms
+                    const SELECT2_MAX_RETRIES = 100;     // Max 5 seconds (50ms * 100)
+                    const PRODUCT_LOAD_DELAY = 300;      // 300ms between products
+                    const MESSAGE_UPDATE_DELAY = 100;    // Delay before updating final message
+                    
+                    // Show loading message
+                    $('#products-added-summary').show().find('h3').text('Loading products from PO...');
+                    
+                    // Track completed products
+                    const totalProducts = <?php echo intval(count($edit_po_data['product_summary'])); ?>;
+                    let completedProducts = 0;
+                    
+                    // Helper function to update loading message when all products are done
+                    function updateLoadingComplete() {
+                        if (completedProducts === totalProducts) {
+                            setTimeout(function() {
+                                $('#products-added-summary').find('h3').text('Products Added to This Order:');
+                            }, MESSAGE_UPDATE_DELAY);
+                        }
+                    }
+                    
                     <?php foreach ($edit_po_data['product_summary'] as $index => $prod): ?>
                         <?php 
                         $prod_id = isset($prod['product_id']) ? intval($prod['product_id']) : 0;
@@ -205,10 +227,42 @@ $products = get_posts(array(
                         // Add product row for existing product
                         setTimeout(function() {
                             $('#add-product-row').trigger('click');
-                            var lastRow = $('#products-list tr:last');
-                            lastRow.find('.product-select').val(<?php echo $prod_id; ?>).trigger('change');
-                            lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
-                        }, <?php echo ($index * 100); ?>);
+                            const lastRow = $('#products-list tr:last');
+                            const productId = <?php echo $prod_id; ?>;
+                            
+                            // Wait for Select2 to initialize before setting value
+                            let retryCount = 0;
+                            const select2InitInterval = setInterval(function() {
+                                // Check if Select2 is initialized
+                                if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
+                                    clearInterval(select2InitInterval);
+                                    
+                                    // Check if product exists in dropdown (use == for type coercion since val() returns string)
+                                    const $select = lastRow.find('.product-select');
+                                    if ($select.find('option').filter(function() { return $(this).val() == productId; }).length === 0) {
+                                        console.warn('Product ID ' + productId + ' not found in dropdown');
+                                    } else {
+                                        $select.val(productId).trigger('change');
+                                        lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
+                                    }
+                                    
+                                    // Track completion and update message when all done
+                                    completedProducts++;
+                                    updateLoadingComplete();
+                                }
+                                
+                                // Increment retry count and check for timeout
+                                retryCount++;
+                                if (retryCount >= SELECT2_MAX_RETRIES) {
+                                    clearInterval(select2InitInterval);
+                                    console.error('Select2 initialization timeout for product ID <?php echo $prod_id; ?>');
+                                    
+                                    // Still count as completed to avoid hanging
+                                    completedProducts++;
+                                    updateLoadingComplete();
+                                }
+                            }, SELECT2_CHECK_INTERVAL);
+                        }, PRODUCT_LOAD_DELAY * <?php echo $index; ?>);
                         <?php endif; ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
