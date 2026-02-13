@@ -196,6 +196,11 @@ $products = get_posts(array(
             // Pre-populate products from existing PO
             jQuery(document).ready(function($) {
                 <?php if (!empty($edit_po_data['product_summary'])): ?>
+                    // Configuration constants
+                    var SELECT2_CHECK_INTERVAL = 50;  // Check every 50ms
+                    var SELECT2_MAX_RETRIES = 100;     // Max 5 seconds (50ms * 100)
+                    var PRODUCT_LOAD_DELAY = 300;      // 300ms between products
+                    
                     // Show loading message
                     $('#products-added-summary').show().find('h3').text('Loading products from PO...');
                     
@@ -211,7 +216,11 @@ $products = get_posts(array(
                             var lastRow = $('#products-list tr:last');
                             
                             // Wait for Select2 to initialize before setting value
+                            var retryCount = 0;
                             var checkSelect2 = setInterval(function() {
+                                retryCount++;
+                                
+                                // Check if Select2 is initialized
                                 if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
                                     clearInterval(checkSelect2);
                                     
@@ -231,8 +240,14 @@ $products = get_posts(array(
                                     }, 100);
                                     <?php endif; ?>
                                 }
-                            }, 50);
-                        }, <?php echo ($index * 300); ?>);
+                                
+                                // Timeout after max retries
+                                if (retryCount >= SELECT2_MAX_RETRIES) {
+                                    clearInterval(checkSelect2);
+                                    console.error('Select2 initialization timeout for product ID <?php echo $prod_id; ?>');
+                                }
+                            }, SELECT2_CHECK_INTERVAL);
+                        }, <?php echo ($index * PRODUCT_LOAD_DELAY); ?>);
                         <?php endif; ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
