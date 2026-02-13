@@ -205,6 +205,10 @@ $products = get_posts(array(
                     // Show loading message
                     $('#products-added-summary').show().find('h3').text('Loading products from PO...');
                     
+                    // Track completed products
+                    const totalProducts = <?php echo count($edit_po_data['product_summary']); ?>;
+                    let completedProducts = 0;
+                    
                     <?php foreach ($edit_po_data['product_summary'] as $index => $prod): ?>
                         <?php 
                         $prod_id = isset($prod['product_id']) ? intval($prod['product_id']) : 0;
@@ -218,12 +222,12 @@ $products = get_posts(array(
                             
                             // Wait for Select2 to initialize before setting value
                             let retryCount = 0;
-                            const checkSelect2 = setInterval(function() {
+                            const select2InitInterval = setInterval(function() {
                                 retryCount++;
                                 
                                 // Check if Select2 is initialized
                                 if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
-                                    clearInterval(checkSelect2);
+                                    clearInterval(select2InitInterval);
                                     
                                     // Check if product exists in dropdown
                                     const productId = <?php echo $prod_id; ?>;
@@ -234,18 +238,27 @@ $products = get_posts(array(
                                         lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
                                     }
                                     
-                                    <?php if ($index === count($edit_po_data['product_summary']) - 1): ?>
-                                    // Last product - update loading message
-                                    setTimeout(function() {
-                                        $('#products-added-summary').find('h3').text('Products Added to This Order:');
-                                    }, MESSAGE_UPDATE_DELAY);
-                                    <?php endif; ?>
+                                    // Track completion and update message when all done
+                                    completedProducts++;
+                                    if (completedProducts === totalProducts) {
+                                        setTimeout(function() {
+                                            $('#products-added-summary').find('h3').text('Products Added to This Order:');
+                                        }, MESSAGE_UPDATE_DELAY);
+                                    }
                                 }
                                 
                                 // Timeout after max retries
                                 if (retryCount >= SELECT2_MAX_RETRIES) {
-                                    clearInterval(checkSelect2);
+                                    clearInterval(select2InitInterval);
                                     console.error('Select2 initialization timeout for product ID <?php echo $prod_id; ?>');
+                                    
+                                    // Still count as completed to avoid hanging
+                                    completedProducts++;
+                                    if (completedProducts === totalProducts) {
+                                        setTimeout(function() {
+                                            $('#products-added-summary').find('h3').text('Products Added to This Order:');
+                                        }, MESSAGE_UPDATE_DELAY);
+                                    }
                                 }
                             }, SELECT2_CHECK_INTERVAL);
                         }, PRODUCT_LOAD_DELAY * <?php echo $index; ?>);
