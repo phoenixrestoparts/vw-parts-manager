@@ -206,7 +206,7 @@ $products = get_posts(array(
                     $('#products-added-summary').show().find('h3').text('Loading products from PO...');
                     
                     // Track completed products
-                    const totalProducts = <?php echo count($edit_po_data['product_summary']); ?>;
+                    const totalProducts = <?php echo intval(count($edit_po_data['product_summary'])); ?>;
                     let completedProducts = 0;
                     
                     // Helper function to update loading message when all products are done
@@ -239,7 +239,7 @@ $products = get_posts(array(
                                     // Check if product exists in dropdown
                                     const productId = <?php echo $prod_id; ?>;
                                     const $select = lastRow.find('.product-select');
-                                    if ($select.find('option').filter(function() { return $(this).val() == productId; }).length === 0) {
+                                    if ($select.find('option').filter(function() { return $(this).val() === productId; }).length === 0) {
                                         console.warn('Product ID ' + productId + ' not found in dropdown');
                                     } else {
                                         $select.val(productId).trigger('change');
@@ -249,7 +249,6 @@ $products = get_posts(array(
                                     // Track completion and update message when all done
                                     completedProducts++;
                                     updateLoadingComplete();
-                                    return;
                                 }
                                 
                                 // Increment retry count and check for timeout
