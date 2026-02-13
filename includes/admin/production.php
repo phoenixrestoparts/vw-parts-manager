@@ -196,6 +196,9 @@ $products = get_posts(array(
             // Pre-populate products from existing PO
             jQuery(document).ready(function($) {
                 <?php if (!empty($edit_po_data['product_summary'])): ?>
+                    // Show loading message
+                    $('#products-added-summary').show().find('h3').text('Loading products from PO...');
+                    
                     <?php foreach ($edit_po_data['product_summary'] as $index => $prod): ?>
                         <?php 
                         $prod_id = isset($prod['product_id']) ? intval($prod['product_id']) : 0;
@@ -206,9 +209,30 @@ $products = get_posts(array(
                         setTimeout(function() {
                             $('#add-product-row').trigger('click');
                             var lastRow = $('#products-list tr:last');
-                            lastRow.find('.product-select').val(<?php echo $prod_id; ?>).trigger('change');
-                            lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
-                        }, <?php echo ($index * 100); ?>);
+                            
+                            // Wait for Select2 to initialize before setting value
+                            var checkSelect2 = setInterval(function() {
+                                if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
+                                    clearInterval(checkSelect2);
+                                    
+                                    // Check if product exists in dropdown
+                                    var productId = <?php echo $prod_id; ?>;
+                                    if (lastRow.find('.product-select option[value="' + productId + '"]').length === 0) {
+                                        console.warn('Product ID ' + productId + ' not found in dropdown');
+                                    } else {
+                                        lastRow.find('.product-select').val(productId).trigger('change');
+                                        lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
+                                    }
+                                    
+                                    <?php if ($index === count($edit_po_data['product_summary']) - 1): ?>
+                                    // Last product - update loading message
+                                    setTimeout(function() {
+                                        $('#products-added-summary').find('h3').text('Products Added to This Order:');
+                                    }, 100);
+                                    <?php endif; ?>
+                                }
+                            }, 50);
+                        }, <?php echo ($index * 300); ?>);
                         <?php endif; ?>
                     <?php endforeach; ?>
                 <?php endif; ?>
