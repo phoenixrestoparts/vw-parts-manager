@@ -228,6 +228,7 @@ $products = get_posts(array(
                         setTimeout(function() {
                             $('#add-product-row').trigger('click');
                             const lastRow = $('#products-list tr:last');
+                            const productId = <?php echo $prod_id; ?>;
                             
                             // Wait for Select2 to initialize before setting value
                             let retryCount = 0;
@@ -236,10 +237,9 @@ $products = get_posts(array(
                                 if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
                                     clearInterval(select2InitInterval);
                                     
-                                    // Check if product exists in dropdown
-                                    const productId = <?php echo $prod_id; ?>;
+                                    // Check if product exists in dropdown (use == for type coercion since val() returns string)
                                     const $select = lastRow.find('.product-select');
-                                    if ($select.find('option').filter(function() { return $(this).val() === productId; }).length === 0) {
+                                    if ($select.find('option').filter(function() { return $(this).val() == productId; }).length === 0) {
                                         console.warn('Product ID ' + productId + ' not found in dropdown');
                                     } else {
                                         $select.val(productId).trigger('change');
