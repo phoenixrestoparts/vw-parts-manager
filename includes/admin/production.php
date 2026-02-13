@@ -197,9 +197,10 @@ $products = get_posts(array(
             jQuery(document).ready(function($) {
                 <?php if (!empty($edit_po_data['product_summary'])): ?>
                     // Configuration constants
-                    var SELECT2_CHECK_INTERVAL = 50;  // Check every 50ms
-                    var SELECT2_MAX_RETRIES = 100;     // Max 5 seconds (50ms * 100)
-                    var PRODUCT_LOAD_DELAY = 300;      // 300ms between products
+                    const SELECT2_CHECK_INTERVAL = 50;  // Check every 50ms
+                    const SELECT2_MAX_RETRIES = 100;     // Max 5 seconds (50ms * 100)
+                    const PRODUCT_LOAD_DELAY = 300;      // 300ms between products
+                    const MESSAGE_UPDATE_DELAY = 100;    // Delay before updating final message
                     
                     // Show loading message
                     $('#products-added-summary').show().find('h3').text('Loading products from PO...');
@@ -213,11 +214,11 @@ $products = get_posts(array(
                         // Add product row for existing product
                         setTimeout(function() {
                             $('#add-product-row').trigger('click');
-                            var lastRow = $('#products-list tr:last');
+                            const lastRow = $('#products-list tr:last');
                             
                             // Wait for Select2 to initialize before setting value
-                            var retryCount = 0;
-                            var checkSelect2 = setInterval(function() {
+                            let retryCount = 0;
+                            const checkSelect2 = setInterval(function() {
                                 retryCount++;
                                 
                                 // Check if Select2 is initialized
@@ -225,7 +226,7 @@ $products = get_posts(array(
                                     clearInterval(checkSelect2);
                                     
                                     // Check if product exists in dropdown
-                                    var productId = <?php echo $prod_id; ?>;
+                                    const productId = <?php echo $prod_id; ?>;
                                     if (lastRow.find('.product-select option[value="' + productId + '"]').length === 0) {
                                         console.warn('Product ID ' + productId + ' not found in dropdown');
                                     } else {
@@ -237,7 +238,7 @@ $products = get_posts(array(
                                     // Last product - update loading message
                                     setTimeout(function() {
                                         $('#products-added-summary').find('h3').text('Products Added to This Order:');
-                                    }, 100);
+                                    }, MESSAGE_UPDATE_DELAY);
                                     <?php endif; ?>
                                 }
                                 
