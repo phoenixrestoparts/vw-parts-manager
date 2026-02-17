@@ -592,7 +592,7 @@ $('#calculate-production').on('click', function() {
         row += '<td>Shipping / Delivery</td>';
         row += '<td>-</td>';
         row += '<td>-</td>';
-        row += '<td><input type="number" step="0.01" class="vwpm-po-qty" value="1" style="width:100px;" data-unit-price="' + shippingCost + '"></td>';
+        row += '<td><input type="number" step="1" min="0" class="vwpm-po-qty" value="1" style="width:100px;" data-unit-price="' + shippingCost + '"></td>';
         row += '<td class="vwpm-po-unit">£' + shippingCost.toFixed(2) + '</td>';
         row += '<td class="vwpm-po-line">£' + shippingCost.toFixed(2) + '</td>';
         row += '</tr>';
