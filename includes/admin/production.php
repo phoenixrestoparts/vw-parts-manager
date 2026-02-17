@@ -52,7 +52,7 @@ $products = get_posts(array(
             <input type="hidden" id="vwpm_edit_po_id" value="<?php echo esc_attr($edit_po_id); ?>">
         <?php endif; ?>
         
-               <p>
+        <p>
             <button type="button" class="button button-primary" id="add-product-row">+ Add Product to Order</button>
         </p>
         
@@ -151,7 +151,7 @@ $products = get_posts(array(
                     echo '<td>' . esc_html($component_name) . '</td>';
                     echo '<td>' . esc_html($component_number) . '</td>';
                     echo '<td>' . ($supplier_ref ? esc_html($supplier_ref) : '&ndash;') . '</td>';
-                    echo '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' . esc_attr(number_format($qty, 2, '.', '')) . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '" aria-label="Quantity for ' . esc_attr($component_name) . '"></td>';
+                    echo '<td><input type="number" step="1" min="0" class="vwpm-po-qty" value="' . esc_attr(round($qty)) . '" style="width:100px;" data-unit-price="' . esc_attr($unit_price) . '" data-qty-per-unit="' . esc_attr($qty_per_unit) . '" aria-label="Quantity for ' . esc_attr($component_name) . '"></td>';
                     echo '<td class="vwpm-po-unit">£' . esc_html(number_format($unit_price, 2)) . '</td>';
                     echo '<td class="vwpm-po-line">£' . esc_html(number_format($line_total, 2)) . '</td>';
                     echo '</tr>';
@@ -195,7 +195,13 @@ $products = get_posts(array(
             <script type="text/javascript">
             // Pre-populate products from existing PO
             jQuery(document).ready(function($) {
-                <?php if (!empty($edit_po_data['product_summary'])): ?>
+                <?php if (!empty($edit_po_data['product_summary']) && is_array($edit_po_data['product_summary'])): ?>
+                    // Show loading message
+                    $('#products-added-summary').show().find('h3').text('Loading products from PO...');
+                    
+                    var totalProducts = <?php echo count($edit_po_data['product_summary']); ?>;
+                    var loadedProducts = 0;
+                    
                     <?php foreach ($edit_po_data['product_summary'] as $index => $prod): ?>
                         <?php 
                         $prod_id = isset($prod['product_id']) ? intval($prod['product_id']) : 0;
@@ -206,11 +212,40 @@ $products = get_posts(array(
                         setTimeout(function() {
                             $('#add-product-row').trigger('click');
                             var lastRow = $('#products-list tr:last');
-                            lastRow.find('.product-select').val(<?php echo $prod_id; ?>).trigger('change');
-                            lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
-                        }, <?php echo ($index * 100); ?>);
+                            
+                            // Wait for Select2 to initialize before setting value
+                            var checkSelect2Ready = setInterval(function() {
+                                if (lastRow.find('.product-select').hasClass('select2-hidden-accessible')) {
+                                    clearInterval(checkSelect2Ready);
+                                    
+                                    // Check if product exists in dropdown
+                                    var productOption = lastRow.find('.product-select option[value="<?php echo $prod_id; ?>"]');
+                                    if (productOption.length > 0) {
+                                        lastRow.find('.product-select').val(<?php echo $prod_id; ?>).trigger('change');
+                                        lastRow.find('.product-qty').val(<?php echo $prod_qty; ?>);
+                                    } else {
+                                        console.warn('Product ID <?php echo $prod_id; ?> not found in dropdown');
+                                        lastRow.find('.remove-product-row').trigger('click');
+                                    }
+                                    
+                                    // Update counter
+                                    loadedProducts++;
+                                    if (loadedProducts === totalProducts) {
+                                        $('#products-added-summary').find('h3').text('Products Added to This Order:');
+                                    }
+                                }
+                            }, 50);
+                        }, <?php echo ($index * 300); ?>);
                         <?php endif; ?>
                     <?php endforeach; ?>
+                <?php else: ?>
+                    // Show message for old POs without product data
+                    setTimeout(function() {
+                        $('#products-added-summary').show().css({
+                            'background': '#fff8e5',
+                            'border-color': '#ffb900'
+                        }).html('<h3 style="margin-top:0;">⚠️ Product Data Missing</h3><p>This PO was created before product tracking was added. Please manually add the products above using "+ Add Product to Order", then click "Recalculate Requirements" to update the component list.</p>');
+                    }, 500);
                 <?php endif; ?>
             });
             </script>
@@ -334,95 +369,76 @@ jQuery(document).ready(function($) {
         updateProductsSummary();
     });
     
-       // Calculate production
-    $('#calculate-production').on('click', function() {
-        var products = [];
-        var hasError = false;
+   // Calculate production
+$('#calculate-production').on('click', function() {
+    var products = [];
+    var hasError = false;
+    
+    $('#products-list tr').each(function() {
+        var productId = $(this).find('.product-select').val();
+        var qty = $(this).find('.product-qty').val();
+        var type = $(this).find('.product-type').val();
         
-        $('#products-list tr').each(function() {
-            var productId = $(this).find('.product-select').val();
-            var qty = $(this).find('.product-qty').val();
-            var type = $(this).find('.product-type').val();
-            
-            if (productId && qty) {
-                products.push({
-                    product_id: productId,
-                    quantity: qty,
-                    product_type: type
-                });
-            } else if (productId || qty) {
-                hasError = true;
-            }
-        });
-        
-        if (hasError) {
-            alert('Please complete all product fields');
-            return;
+        if (productId && qty) {
+            products.push({
+                product_id: productId,
+                quantity: qty,
+                product_type: type
+            });
+        } else if (productId || qty) {
+            hasError = true;
         }
-        
-        if (products.length === 0) {
-            alert('Please add at least one product');
-            return;
-        }
-        
-        var vatEnabled = $('#vwpm_vat_toggle').is(':checked');
-        var editPoId = $('#vwpm_edit_po_id').val();
-        
-        // If editing, collect existing items to preserve them
-        var existingItems = [];
-        if (editPoId) {
-            $('.vwpm-po-row').each(function() {
-                if ($(this).find('.vwpm-po-include').is(':checked')) {
-                    var row = $(this);
-                    existingItems.push({
-                        component_id: row.data('component-id'),
-                        component_name: row.find('td').eq(1).text(),
-                        component_number: row.find('td').eq(2).text(),
-                        supplier_ref: row.find('td').eq(3).text(),
-                        total_qty: parseFloat(row.find('.vwpm-po-qty').val()) || 0,
-                        unit_price: parseFloat(row.find('.vwpm-po-qty').data('unit-price')) || 0,
-                        qty_per_unit: parseFloat(row.find('.vwpm-po-qty').data('qty-per-unit')) || 1
+    });
+    
+    if (hasError) {
+        alert('Please complete all product fields');
+        return;
+    }
+    
+    if (products.length === 0) {
+        alert('Please add at least one product');
+        return;
+    }
+    
+    var vatEnabled = $('#vwpm_vat_toggle').is(':checked');
+    var editPoId = $('#vwpm_edit_po_id').val();
+    
+    // REMOVED: Don't collect existing items - always do fresh calculation
+    
+    $('#vwpm-results').html('<div class="notice notice-info"><p>Calculating requirements...</p></div>');
+    
+    $.ajax({
+        url: vwpm_ajax.ajax_url,
+        type: 'POST',
+        data: {
+            action: 'vwpm_calculate_production',
+            nonce: vwpm_ajax.nonce,
+            products: products,
+            vat_enabled: vatEnabled
+        },
+        success: function(response) {
+            if (response.success) {
+                $('#vwpm-results').html(response.data.html);
+                
+                // If editing, replace save button with update button
+                if (editPoId) {
+                    $('.vwpm-save-po-btn').each(function() {
+                        var supplierId = $(this).data('supplier-id');
+                        $(this).replaceWith(
+                            '<button class="button button-primary vwpm-update-po-btn" data-po-id="' + editPoId + '" data-supplier-id="' + supplierId + '">Update PO (Save Changes)</button>'
+                        );
                     });
                 }
-            });
-        }
-        
-        $('#vwpm-results').html('<div class="notice notice-info"><p>Calculating requirements...</p></div>');
-        
-        $.ajax({
-            url: vwpm_ajax.ajax_url,
-            type: 'POST',
-            data: {
-                action: 'vwpm_calculate_production',
-                nonce: vwpm_ajax.nonce,
-                products: products,
-                vat_enabled: vatEnabled,
-                existing_items: existingItems,
-                merge_mode: editPoId ? true : false
-            },
-            success: function(response) {
-                if (response.success) {
-                    $('#vwpm-results').html(response.data.html);
-                    
-                    // If editing, replace save button with update button
-                    if (editPoId) {
-                        $('.vwpm-save-po-btn').each(function() {
-                            var supplierId = $(this).data('supplier-id');
-                            $(this).replaceWith(
-                                '<button class="button button-primary vwpm-update-po-btn" data-po-id="' + editPoId + '" data-supplier-id="' + supplierId + '">Update PO (Save Changes)</button>'
-                            );
-                        });
-                    }
-                } else {
-                    $('#vwpm-results').html('<div class="notice notice-error"><p>Error: ' + (response.data.message || 'Unknown error') + '</p></div>');
-                }
-            },
-            error: function(xhr, status, error) {
-                $('#vwpm-results').html('<div class="notice notice-error"><p>Request failed: ' + error + '</p></div>');
-                console.error('AJAX Error:', xhr.responseText);
+            } else {
+                $('#vwpm-results').html('<div class="notice notice-error"><p>Error: ' + (response.data.message || 'Unknown error') + '</p></div>');
             }
-        });
+        },
+        error: function(xhr, status, error) {
+            $('#vwpm-results').html('<div class="notice notice-error"><p>Request failed: ' + error + '</p></div>');
+            console.error('AJAX Error:', xhr.responseText);
+        }
     });
+});
 
     // Update PO button (for edit mode)
     $(document).on('click', '.vwpm-update-po-btn', function(e) {
