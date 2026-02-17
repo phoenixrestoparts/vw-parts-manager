@@ -174,8 +174,8 @@ class VW_Parts_Manager {
     
     public function add_admin_menus() {
         add_menu_page(
-            'VW Parts Manager',
-            'VW Parts',
+            'Manufacturing Manager',
+            'Manufacturing',
             'manage_options',
             'vw-parts-manager',
             array($this, 'render_dashboard'),
@@ -1028,7 +1028,7 @@ function recalculateSupplierTotal(supplierId) {
                                     </select>
                                 </td>
                                 <td>
-                                    <input type="number" step="0.01" name="vwpm_bom[<?php echo $index; ?>][quantity]" value="<?php echo esc_attr($item['quantity']); ?>" class="regular-text">
+                                    <input type="number" step="1" min="0" name="vwpm_bom[<?php echo $index; ?>][quantity]" value="<?php echo esc_attr(round($item['quantity'], 0, PHP_ROUND_HALF_UP)); ?>" class="regular-text">
                                 </td>
                                 <td>
                                     <button type="button" class="button vwpm-remove-row">Remove</button>
@@ -1056,7 +1056,7 @@ function recalculateSupplierTotal(supplierId) {
                     </select>
                 </td>
                 <td>
-                    <input type="number" step="0.01" name="vwpm_bom[INDEX][quantity]" value="1" class="regular-text">
+                    <input type="number" step="1" min="0" name="vwpm_bom[INDEX][quantity]" value="1" class="regular-text">
                 </td>
                 <td>
                     <button type="button" class="button vwpm-remove-row">Remove</button>
@@ -1149,7 +1149,7 @@ function recalculateSupplierTotal(supplierId) {
         ?>
         <p>
             <label for="vwpm_product_supplier">Supplier (for ready-made products):</label>
-            <select id="vwpm_product_supplier" name="vwpm_product_supplier_id" style="width: 100%;">
+            <select id="vwpm_product_supplier" name="vwpm_product_supplier_id" class="vwpm-supplier-select" style="width: 100%;">
                 <option value="">None (manufactured in-house)</option>
                 <?php foreach ($suppliers as $supplier): ?>
                     <option value="<?php echo esc_attr($supplier->id); ?>" <?php selected($supplier_id, $supplier->id); ?>>
@@ -1158,6 +1158,15 @@ function recalculateSupplierTotal(supplierId) {
                 <?php endforeach; ?>
             </select>
         </p>
+        <script>
+        jQuery(document).ready(function($) {
+            $('#vwpm_product_supplier').select2({
+                width: '100%',
+                placeholder: 'Search for supplier...',
+                allowClear: true
+            });
+        });
+        </script>
         <p class="description">Select a supplier if this is a ready-made product you purchase complete.</p>
         <?php
     }
@@ -1246,10 +1255,13 @@ add_filter( 'manage_edit-vwpm_component_columns', 'vwpm_component_columns', 15 )
 function vwpm_component_columns( $columns ) {
     $new = array();
     foreach ( $columns as $key => $label ) {
-        $new[ $key ] = $label;
         if ( 'title' === $key ) {
-            $new['component_location']     = 'Location';
+            $new['component_number'] = 'Component Number';
+            $new['title'] = 'Component Name';
+            $new['component_location'] = 'Location';
             $new['component_supplier_ref'] = 'Supplier Ref';
+        } else {
+            $new[ $key ] = $label;
         }
     }
     return $new;
@@ -1257,6 +1269,10 @@ function vwpm_component_columns( $columns ) {
 
 add_action( 'manage_vwpm_component_posts_custom_column', 'vwpm_render_component_list_columns', 10, 2 );
 function vwpm_render_component_list_columns( $column, $post_id ) {
+    if ( 'component_number' === $column ) {
+        $num = get_post_meta( $post_id, '_vwpm_component_number', true );
+        echo $num ? esc_html( $num ) : '-';
+    }
     if ( 'component_location' === $column ) {
         $loc = get_post_meta( $post_id, '_vwpm_component_location', true );
         echo $loc ? esc_html( $loc ) : '-';
@@ -1271,9 +1287,12 @@ add_filter( 'manage_edit-vwpm_tool_columns', 'vwpm_tool_columns', 15 );
 function vwpm_tool_columns( $columns ) {
     $new = array();
     foreach ( $columns as $key => $label ) {
-        $new[ $key ] = $label;
         if ( 'title' === $key ) {
+            $new['tool_number'] = 'Tool Number';
+            $new['title'] = 'Tool Name';
             $new['tool_location'] = 'Location';
+        } else {
+            $new[ $key ] = $label;
         }
     }
     return $new;
@@ -1281,6 +1300,10 @@ function vwpm_tool_columns( $columns ) {
 
 add_action( 'manage_vwpm_tool_posts_custom_column', 'vwpm_render_tool_list_columns', 10, 2 );
 function vwpm_render_tool_list_columns( $column, $post_id ) {
+    if ( 'tool_number' === $column ) {
+        $num = get_post_meta( $post_id, '_vwpm_tool_number', true );
+        echo $num ? esc_html( $num ) : '-';
+    }
     if ( 'tool_location' === $column ) {
         $loc = get_post_meta( $post_id, '_vwpm_location', true );
         echo $loc ? esc_html( $loc ) : '-';
@@ -1805,7 +1828,7 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
         $html .= '<table class="vwpm-results-table" style="width:100%;border-collapse:collapse;">';
         $html .= '<thead><tr>';
         $html .= '<th style="width:40px"></th>';
-        $html .= '<th>Item</th><th>Part Number</th><th>Supplier Ref</th><th style="width:120px">Qty</th><th style="width:110px">Unit Price</th><th style="width:110px">Line Total</th>';
+        $html .= '<th>Item</th><th>Part Number</th><th>Supplier Ref</th><th class="no-print" style="width:60px;">Notes</th><th style="width:120px">Qty</th><th style="width:110px">Unit Price</th><th style="width:110px">Line Total</th>';
         $html .= '</tr></thead><tbody>';
 
         $supplier_total = 0;
@@ -1817,19 +1840,37 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
 
             $supplier_total += $line_total;
 
+            // Get component notes if it's a real component (not a product)
+            $notes = '';
+            $has_notes = false;
+            if ( is_numeric( $item['component_id'] ) ) {
+                $notes = get_post_meta( intval( $item['component_id'] ), '_vwpm_notes', true );
+                $has_notes = !empty( $notes );
+            }
+
             $html .= '<tr data-component-id="' . $item_id_attr . '" class="vwpm-po-row">';
             $html .= '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' . esc_attr( $supplier_id ) . '" checked></td>';
             $html .= '<td>' . esc_html( $item['component_name'] ) . '</td>';
             $html .= '<td>' . esc_html( $item['component_number'] ) . '</td>';
             $html .= '<td>' . ( $item['supplier_ref'] ? esc_html( $item['supplier_ref'] ) : '&ndash;' ) . '</td>';
-            $html .= '<td><input type="number" step="1" class="vwpm-po-qty" value="' . number_format( $qty, 2, '.', '' ) . '" style="width:100px;" data-unit-price="' . esc_attr( $unit_price ) . '"></td>';
+            
+            // Notes icon cell
+            $html .= '<td class="no-print" style="text-align:center;">';
+            if ( $has_notes ) {
+                $html .= '<button type="button" class="vwpm-notes-icon" data-notes="' . esc_attr( $notes ) . '" style="cursor:pointer; color:#dc3545; font-size:18px; background:none; border:none; padding:0;" title="Click to view notes" aria-label="View component notes">🔴<span style="font-size:12px;vertical-align:super;">(!)</span></button>';
+            } else {
+                $html .= '&ndash;';
+            }
+            $html .= '</td>';
+            
+            $html .= '<td><input type="number" step="1" min="0" class="vwpm-po-qty" value="' . round( $qty, 0, PHP_ROUND_HALF_UP ) . '" style="width:100px;" data-unit-price="' . esc_attr( $unit_price ) . '"></td>';
             $html .= '<td class="vwpm-po-unit">£' . number_format( $unit_price, 2 ) . '</td>';
             $html .= '<td class="vwpm-po-line">£' . number_format( $line_total, 2 ) . '</td>';
             $html .= '</tr>';
         }
 
         $html .= '<tr class="vwpm-supplier-total">';
-        $html .= '<td colspan="6" style="text-align:right;"><strong>Supplier Total:</strong></td>';
+        $html .= '<td colspan="7" style="text-align:right;"><strong>Supplier Total:</strong></td>';
         $html .= '<td class="vwpm-supplier-total-value">£' . number_format( $supplier_total, 2 ) . '</td>';
         $html .= '</tr>';
 
@@ -1861,6 +1902,55 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
     }
 
     $html .= '<div style="margin-top:20px;font-size:16px;"><strong>Grand Total: £' . number_format( $grand_total, 2 ) . '</strong></div>';
+    
+    // Add CSS for print
+    $html .= '<style>
+        @media print {
+            .no-print { display: none !important; }
+        }
+    </style>';
+    
+    // Add JavaScript for notes popup modal
+    $html .= '<script>
+    jQuery(document).ready(function($) {
+        $(document).on("click", ".vwpm-notes-icon", function() {
+            var notes = $(this).data("notes");
+            var modal = $("<div>").css({
+                position: "fixed",
+                inset: "0",
+                background: "rgba(0,0,0,0.7)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 99999
+            });
+            
+            var content = $("<div>").css({
+                background: "#fff",
+                padding: "20px",
+                borderRadius: "8px",
+                maxWidth: "600px",
+                maxHeight: "80vh",
+                overflow: "auto",
+                boxShadow: "0 10px 40px rgba(0,0,0,0.3)"
+            });
+            
+            content.append($("<h3>").css({marginTop: "0", color: "#dc3545"}).text("Component Notes"));
+            content.append($("<div>").css({whiteSpace: "pre-wrap", margin: "15px 0"}).text(notes));
+            content.append($("<button>").addClass("button").css({marginTop: "10px"}).text("Close"));
+            
+            modal.append(content);
+            $("body").append(modal);
+            
+            modal.on("click", function(e) {
+                if (e.target === this || $(e.target).hasClass("button")) {
+                    modal.remove();
+                }
+            });
+        });
+    });
+    </script>';
+    
     $html .= '</div>';
 
     return $html;
