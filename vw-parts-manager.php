@@ -1150,7 +1150,7 @@ function recalculateSupplierTotal(supplierId) {
         <p>
             <label for="vwpm_product_supplier">Supplier (for ready-made products):</label>
             <select id="vwpm_product_supplier" name="vwpm_product_supplier_id" class="vwpm-supplier-select" style="width: 100%;">
-                <option value="">-- Search for Supplier or Select None --</option>
+                <option value="">None</option>
                 <?php foreach ($suppliers as $supplier): ?>
                     <option value="<?php echo esc_attr($supplier->id); ?>" <?php selected($supplier_id, $supplier->id); ?>>
                         <?php echo esc_html($supplier->name); ?>
@@ -1857,13 +1857,13 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
             // Notes icon cell
             $html .= '<td class="no-print" style="text-align:center;">';
             if ( $has_notes ) {
-                $html .= '<span class="vwpm-notes-icon" data-notes="' . esc_attr( $notes ) . '" style="cursor:pointer; color:#dc3545; font-size:18px;" title="Click to view notes">🔴</span>';
+                $html .= '<span class="vwpm-notes-icon" data-notes="' . esc_attr( $notes ) . '" style="cursor:pointer; color:#dc3545; font-size:18px;" title="Click to view notes" aria-label="View component notes">🔴</span>';
             } else {
                 $html .= '&ndash;';
             }
             $html .= '</td>';
             
-            $html .= '<td><input type="number" step="1" class="vwpm-po-qty" value="' . number_format( $qty, 2, '.', '' ) . '" style="width:100px;" data-unit-price="' . esc_attr( $unit_price ) . '"></td>';
+            $html .= '<td><input type="number" step="1" min="0" class="vwpm-po-qty" value="' . round( $qty ) . '" style="width:100px;" data-unit-price="' . esc_attr( $unit_price ) . '"></td>';
             $html .= '<td class="vwpm-po-unit">£' . number_format( $unit_price, 2 ) . '</td>';
             $html .= '<td class="vwpm-po-line">£' . number_format( $line_total, 2 ) . '</td>';
             $html .= '</tr>';
@@ -1935,7 +1935,7 @@ function vwpm_build_po_html_multi( $products, $requirements, $tools, $grand_tota
                 boxShadow: "0 10px 40px rgba(0,0,0,0.3)"
             }).html(
                 "<h3 style=\"margin-top:0; color:#dc3545;\">Component Notes</h3>" +
-                "<div style=\"white-space:pre-wrap; margin:15px 0;\">" + $("<div>").text(notes).html() + "</div>" +
+                "<div style=\"white-space:pre-wrap; margin:15px 0;\">" + $("<div>").text(notes) + "</div>" +
                 "<button class=\"button\" style=\"margin-top:10px;\">Close</button>"
             );
             
