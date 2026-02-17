@@ -412,6 +412,13 @@ class VW_Parts_Manager {
         // Initialize on page load
         initComponentSelect2();
         initToolSelect2();
+        
+        // Initialize Select2 on supplier select (product edit page)
+        $('#vwpm_product_supplier').select2({
+            width: '100%',
+            placeholder: 'Search for supplier or select none...',
+            allowClear: true
+        });
 
         // BOM Row Management
         var bomIndex = $('#vwpm-bom-rows tr').length;
@@ -1158,15 +1165,6 @@ function recalculateSupplierTotal(supplierId) {
                 <?php endforeach; ?>
             </select>
         </p>
-        <script>
-        jQuery(document).ready(function($) {
-            $('#vwpm_product_supplier').select2({
-                width: '100%',
-                placeholder: 'Search for supplier...',
-                allowClear: true
-            });
-        });
-        </script>
         <p class="description">Select a supplier if this is a ready-made product you purchase complete.</p>
         <?php
     }
