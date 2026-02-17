@@ -647,16 +647,24 @@ $(document).on('click', '.vwpm-save-po-btn', function(e) {
         }
     });
 
-    // Get product info if available
+    // Get product info from products table
     var products = [];
-    if ($('#vwpm_product_id').length) {
-        var selectedOption = $('#vwpm_product_id option:selected');
-        products = [{
-            product_id: $('#vwpm_product_id').val(),
-            title: selectedOption.text(),
-            quantity: $('#vwpm_quantity').val()
-        }];
-    }
+    $('#products-list tr').each(function() {
+        var $row = $(this);
+        var productId = $row.find('.product-select').val();
+        var qty = $row.find('.product-qty').val();
+        
+        if (productId && qty) {
+            var productTitle = $row.find('.product-select option:selected').text();
+            products.push({
+                product_id: productId,
+                title: productTitle,
+                quantity: qty
+            });
+        }
+    });
+
+    console.log('Products being saved:', products);
 
     $btn.prop('disabled', true).text('Saving...');
 
