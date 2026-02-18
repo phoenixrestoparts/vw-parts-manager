@@ -288,7 +288,7 @@ jQuery(document).ready(function($) {
         
         var fileInput = $(this).find('input[type="file"]')[0];
         if (!fileInput.files.length) {
-            alert('Please select a CSV file first.');
+            alert('Please select a CSV file to upload.');
             return;
         }
         

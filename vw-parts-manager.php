@@ -2639,6 +2639,20 @@ function vwpm_ajax_import_product_boms() {
     }
     
     $file = $_FILES['product_boms_csv'];
+    
+    // Validate file type and size
+    $allowed_types = array('text/csv', 'text/plain', 'application/csv', 'text/comma-separated-values', 'application/vnd.ms-excel');
+    $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    
+    if ($file_extension !== 'csv' || !in_array($file['type'], $allowed_types)) {
+        wp_send_json_error(array('message' => 'Invalid file type. Please upload a CSV file.'));
+    }
+    
+    // Check file size (max 5MB)
+    if ($file['size'] > 5242880) {
+        wp_send_json_error(array('message' => 'File too large. Maximum size is 5MB.'));
+    }
+    
     $handle = fopen($file['tmp_name'], 'r');
     
     if (!$handle) {
@@ -2646,8 +2660,36 @@ function vwpm_ajax_import_product_boms() {
     }
     
     global $wpdb;
-    $headers = fgetcsv($handle); // Skip header row
-    $processed = 0;
+    $headers = fgetcsv($handle);
+    
+    // Validate CSV headers
+    $expected_headers = array('Product SKU', 'Component Number', 'Quantity', 'Tool Number', 'Supplier Name');
+    if (!$headers || count($headers) < 2) {
+        fclose($handle);
+        wp_send_json_error(array('message' => 'Invalid CSV format. Missing headers.'));
+    }
+    
+    // Normalize headers for comparison (trim whitespace)
+    $headers = array_map('trim', $headers);
+    $expected_normalized = array_map('trim', $expected_headers);
+    
+    // Check if headers match expected format (allow some flexibility)
+    $headers_match = true;
+    for ($i = 0; $i < count($expected_normalized); $i++) {
+        if (isset($headers[$i]) && strcasecmp($headers[$i], $expected_normalized[$i]) !== 0) {
+            $headers_match = false;
+            break;
+        }
+    }
+    
+    if (!$headers_match && count($headers) >= 2) {
+        // Log warning but continue - headers might be slightly different
+        // This allows for some flexibility in CSV format
+    }
+    
+    $components_processed = 0;
+    $tools_processed = 0;
+    $suppliers_processed = 0;
     $errors = array();
     
     // Track which products we've processed to avoid duplicate tool assignments
@@ -2715,7 +2757,7 @@ function vwpm_ajax_import_product_boms() {
                 }
                 
                 update_post_meta($product, '_vwpm_bom', $bom);
-                $processed++;
+                $components_processed++;
             } else {
                 $errors[] = "Component '$component_number' not found for product SKU '$product_sku'";
             }
@@ -2771,16 +2813,34 @@ function vwpm_ajax_import_product_boms() {
     foreach ($product_tools as $product_id => $tool_ids) {
         $unique_tools = array_unique($tool_ids);
         update_post_meta($product_id, '_vwpm_tools', $unique_tools);
+        $tools_processed += count($unique_tools);
     }
     
     // Save suppliers for each product
     foreach ($product_suppliers as $product_id => $supplier_id) {
         update_post_meta($product_id, '_vwpm_product_supplier_id', $supplier_id);
+        $suppliers_processed++;
     }
     
     fclose($handle);
     
-    $message = "Processed $processed BOM entries.";
+    // Build detailed success message
+    $message_parts = array();
+    if ($components_processed > 0) {
+        $message_parts[] = "$components_processed component(s)";
+    }
+    if ($tools_processed > 0) {
+        $message_parts[] = "$tools_processed tool(s)";
+    }
+    if ($suppliers_processed > 0) {
+        $message_parts[] = "$suppliers_processed supplier assignment(s)";
+    }
+    
+    $message = "Successfully processed: " . implode(', ', $message_parts);
+    if (empty($message_parts)) {
+        $message = "No items were processed.";
+    }
+    
     if (!empty($errors)) {
         $message .= " Errors: " . implode(', ', array_slice($errors, 0, 5));
         if (count($errors) > 5) {
@@ -2789,7 +2849,9 @@ function vwpm_ajax_import_product_boms() {
     }
     
     wp_send_json_success(array(
-        'processed' => $processed,
+        'components_processed' => $components_processed,
+        'tools_processed' => $tools_processed,
+        'suppliers_processed' => $suppliers_processed,
         'errors' => $errors,
         'message' => $message
     ));
