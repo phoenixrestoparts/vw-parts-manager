@@ -108,6 +108,11 @@ M8 Bolt,BOLT-M8-50,Bin B5,Fasteners Inc,0.25,50mm length</pre>
 </div>
 
 <script>
+var vwpm_ajax = {
+    ajax_url: <?php echo json_encode(admin_url('admin-ajax.php')); ?>,
+    nonce: <?php echo json_encode(wp_create_nonce('vwpm_nonce')); ?>
+};
+
 jQuery(document).ready(function($) {
     // Download sample templates
     $('#vwpm-download-tools-template').on('click', function(e) {
@@ -134,6 +139,101 @@ jQuery(document).ready(function($) {
         a.href = url;
         a.download = 'components-template.csv';
         a.click();
+    });
+    
+    // Export CSV buttons
+    $('#vwpm-export-tools').on('click', function(e) {
+        e.preventDefault();
+        window.location.href = vwpm_ajax.ajax_url + '?action=vwpm_export_tools&nonce=' + vwpm_ajax.nonce;
+    });
+    
+    $('#vwpm-export-components').on('click', function(e) {
+        e.preventDefault();
+        window.location.href = vwpm_ajax.ajax_url + '?action=vwpm_export_components&nonce=' + vwpm_ajax.nonce;
+    });
+    
+    // Import Tools CSV
+    $('#vwpm-import-tools-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var fileInput = $(this).find('input[type="file"]')[0];
+        if (!fileInput.files.length) {
+            alert('Please select a CSV file first.');
+            return;
+        }
+        
+        var formData = new FormData();
+        formData.append('action', 'vwpm_import_tools');
+        formData.append('nonce', vwpm_ajax.nonce);
+        formData.append('tools_csv', fileInput.files[0]);
+        
+        var $button = $(this).find('button[type="submit"]');
+        var originalText = $button.text();
+        $button.prop('disabled', true).text('Importing...');
+        
+        $.ajax({
+            url: vwpm_ajax.ajax_url,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    alert('Success! Imported ' + response.data.imported + ' tools.');
+                    fileInput.value = '';
+                } else {
+                    alert('Error: ' + (response.data.message || 'Import failed'));
+                }
+            },
+            error: function() {
+                alert('Error: Server request failed');
+            },
+            complete: function() {
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
+    // Import Components CSV
+    $('#vwpm-import-components-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var fileInput = $(this).find('input[type="file"]')[0];
+        if (!fileInput.files.length) {
+            alert('Please select a CSV file first.');
+            return;
+        }
+        
+        var formData = new FormData();
+        formData.append('action', 'vwpm_import_components');
+        formData.append('nonce', vwpm_ajax.nonce);
+        formData.append('components_csv', fileInput.files[0]);
+        
+        var $button = $(this).find('button[type="submit"]');
+        var originalText = $button.text();
+        $button.prop('disabled', true).text('Importing...');
+        
+        $.ajax({
+            url: vwpm_ajax.ajax_url,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    alert('Success! Imported ' + response.data.imported + ' components.');
+                    fileInput.value = '';
+                } else {
+                    alert('Error: ' + (response.data.message || 'Import failed'));
+                }
+            },
+            error: function() {
+                alert('Error: Server request failed');
+            },
+            complete: function() {
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
     });
 });
 </script>
