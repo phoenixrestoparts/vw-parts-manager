@@ -37,6 +37,7 @@ class VW_Parts_Manager {
         add_action('wp_ajax_vwpm_import_components', 'vwpm_ajax_import_components');
         add_action('wp_ajax_vwpm_export_tools', 'vwpm_ajax_export_tools');
         add_action('wp_ajax_vwpm_export_components', 'vwpm_ajax_export_components');
+        add_action('wp_ajax_vwpm_import_product_boms', 'vwpm_ajax_import_product_boms');
         add_action('wp_ajax_vwpm_add_supplier', 'vwpm_ajax_add_supplier');
         add_action('wp_ajax_vwpm_update_supplier', 'vwpm_ajax_update_supplier');
         add_action('wp_ajax_vwpm_delete_supplier', 'vwpm_ajax_delete_supplier');
@@ -2627,4 +2628,231 @@ function vwpm_ajax_export_components() {
     
     fclose($output);
     exit;
+}
+
+// AJAX: Import Product BOMs from CSV
+function vwpm_ajax_import_product_boms() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!isset($_FILES['product_boms_csv'])) {
+        wp_send_json_error(array('message' => 'No file uploaded'));
+    }
+    
+    $file = $_FILES['product_boms_csv'];
+    
+    // Validate file type and size
+    $allowed_types = array('text/csv', 'text/plain', 'application/csv', 'text/comma-separated-values', 'application/vnd.ms-excel');
+    $file_extension = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    
+    if ($file_extension !== 'csv' || !in_array($file['type'], $allowed_types)) {
+        wp_send_json_error(array('message' => 'Invalid file type. Please upload a CSV file.'));
+    }
+    
+    // Check file size (max 5MB)
+    if ($file['size'] > 5242880) {
+        wp_send_json_error(array('message' => 'File too large. Maximum size is 5MB.'));
+    }
+    
+    $handle = fopen($file['tmp_name'], 'r');
+    
+    if (!$handle) {
+        wp_send_json_error(array('message' => 'Could not read file'));
+    }
+    
+    global $wpdb;
+    $headers = fgetcsv($handle);
+    
+    // Validate CSV headers
+    $expected_headers = array('Product SKU', 'Component Number', 'Quantity', 'Tool Number', 'Supplier Name');
+    if (!$headers || count($headers) < 2) {
+        fclose($handle);
+        wp_send_json_error(array('message' => 'Invalid CSV format. Missing headers.'));
+    }
+    
+    // Normalize headers for comparison (trim whitespace)
+    $headers = array_map('trim', $headers);
+    $expected_normalized = array_map('trim', $expected_headers);
+    
+    // Check if headers match expected format (allow some flexibility)
+    $headers_match = true;
+    for ($i = 0; $i < count($expected_normalized); $i++) {
+        if (isset($headers[$i]) && strcasecmp($headers[$i], $expected_normalized[$i]) !== 0) {
+            $headers_match = false;
+            break;
+        }
+    }
+    
+    if (!$headers_match && count($headers) >= 2) {
+        // Log warning but continue - headers might be slightly different
+        // This allows for some flexibility in CSV format
+    }
+    
+    $components_processed = 0;
+    $tools_processed = 0;
+    $suppliers_processed = 0;
+    $errors = array();
+    
+    // Track which products we've processed to avoid duplicate tool assignments
+    $products_processed = array();
+    $product_tools = array(); // Store tools per product to deduplicate
+    $product_suppliers = array(); // Store suppliers per product
+    
+    while (($row = fgetcsv($handle)) !== false) {
+        if (count($row) < 2) continue; // Need at least SKU and one other field
+        
+        $product_sku = sanitize_text_field($row[0]);
+        $component_number = isset($row[1]) && !empty($row[1]) ? sanitize_text_field($row[1]) : '';
+        $quantity = isset($row[2]) && !empty($row[2]) ? floatval($row[2]) : 1;
+        $tool_number = isset($row[3]) && !empty($row[3]) ? sanitize_text_field($row[3]) : '';
+        $supplier_name = isset($row[4]) && !empty($row[4]) ? sanitize_text_field($row[4]) : '';
+        
+        // Find product by SKU
+        $product = wc_get_product_id_by_sku($product_sku);
+        if (!$product) {
+            $errors[] = "Product SKU '$product_sku' not found";
+            continue;
+        }
+        
+        // Process Component (add to BOM)
+        if (!empty($component_number)) {
+            // Find component post by component_number
+            $component_posts = get_posts(array(
+                'post_type' => 'vwpm_component',
+                'meta_query' => array(
+                    array(
+                        'key' => '_vwpm_component_number',
+                        'value' => $component_number,
+                        'compare' => '='
+                    )
+                ),
+                'posts_per_page' => 1,
+                'fields' => 'ids'
+            ));
+            
+            if (!empty($component_posts)) {
+                $component_id = $component_posts[0];
+                
+                // Get existing BOM
+                $bom = get_post_meta($product, '_vwpm_bom', true);
+                if (!is_array($bom)) {
+                    $bom = array();
+                }
+                
+                // Check if component already exists in BOM
+                $found = false;
+                foreach ($bom as &$item) {
+                    if ($item['component_id'] == $component_id) {
+                        $item['quantity'] = $quantity; // Update quantity
+                        $found = true;
+                        break;
+                    }
+                }
+                
+                // Add new component if not found
+                if (!$found) {
+                    $bom[] = array(
+                        'component_id' => $component_id,
+                        'quantity' => $quantity
+                    );
+                }
+                
+                update_post_meta($product, '_vwpm_bom', $bom);
+                $components_processed++;
+            } else {
+                $errors[] = "Component '$component_number' not found for product SKU '$product_sku'";
+            }
+        }
+        
+        // Process Tool (add to required tools)
+        if (!empty($tool_number)) {
+            // Initialize array for this product if needed
+            if (!isset($product_tools[$product])) {
+                $product_tools[$product] = array();
+            }
+            
+            // Find tool post by tool_number
+            $tool_posts = get_posts(array(
+                'post_type' => 'vwpm_tool',
+                'meta_query' => array(
+                    array(
+                        'key' => '_vwpm_tool_number',
+                        'value' => $tool_number,
+                        'compare' => '='
+                    )
+                ),
+                'posts_per_page' => 1,
+                'fields' => 'ids'
+            ));
+            
+            if (!empty($tool_posts)) {
+                $tool_id = $tool_posts[0];
+                // Store tool ID (will deduplicate later)
+                $product_tools[$product][] = $tool_id;
+            } else {
+                $errors[] = "Tool '$tool_number' not found for product SKU '$product_sku'";
+            }
+        }
+        
+        // Process Supplier
+        if (!empty($supplier_name)) {
+            // Find supplier by name
+            $supplier = $wpdb->get_row($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}vwpm_suppliers WHERE name = %s",
+                $supplier_name
+            ));
+            
+            if ($supplier) {
+                $product_suppliers[$product] = $supplier->id;
+            } else {
+                $errors[] = "Supplier '$supplier_name' not found for product SKU '$product_sku'";
+            }
+        }
+    }
+    
+    // Now save deduplicated tools for each product
+    foreach ($product_tools as $product_id => $tool_ids) {
+        $unique_tools = array_unique($tool_ids);
+        update_post_meta($product_id, '_vwpm_tools', $unique_tools);
+        $tools_processed += count($unique_tools);
+    }
+    
+    // Save suppliers for each product
+    foreach ($product_suppliers as $product_id => $supplier_id) {
+        update_post_meta($product_id, '_vwpm_product_supplier_id', $supplier_id);
+        $suppliers_processed++;
+    }
+    
+    fclose($handle);
+    
+    // Build detailed success message
+    $message_parts = array();
+    if ($components_processed > 0) {
+        $message_parts[] = "$components_processed component(s)";
+    }
+    if ($tools_processed > 0) {
+        $message_parts[] = "$tools_processed tool(s)";
+    }
+    if ($suppliers_processed > 0) {
+        $message_parts[] = "$suppliers_processed supplier assignment(s)";
+    }
+    
+    $message = "Successfully processed: " . implode(', ', $message_parts);
+    if (empty($message_parts)) {
+        $message = "No items were processed.";
+    }
+    
+    if (!empty($errors)) {
+        $message .= " Errors: " . implode(', ', array_slice($errors, 0, 5));
+        if (count($errors) > 5) {
+            $message .= " (and " . (count($errors) - 5) . " more)";
+        }
+    }
+    
+    wp_send_json_success(array(
+        'components_processed' => $components_processed,
+        'tools_processed' => $tools_processed,
+        'suppliers_processed' => $suppliers_processed,
+        'errors' => $errors,
+        'message' => $message
+    ));
 }

@@ -73,6 +73,37 @@ M8 Bolt,BOLT-M8-50,Bin B5,Fasteners Inc,0.25,50mm length</pre>
             </div>
         </div>
         
+        <!-- Product BOMs Import/Export -->
+        <div class="vwpm-card">
+            <h2>Product BOMs</h2>
+            
+            <div class="vwpm-import-section">
+                <h3>Import Product BOMs from CSV</h3>
+                <p>Upload a CSV file with the following columns: <code>Product SKU, Component Number, Quantity, Tool Number, Supplier Name</code></p>
+                <p><strong>Notes:</strong></p>
+                <ul>
+                    <li>Product SKU must match an existing WooCommerce product SKU</li>
+                    <li>Component Number must match an existing component</li>
+                    <li>Tool Number must match an existing tool</li>
+                    <li>Supplier Name must match an existing supplier</li>
+                    <li>You can have multiple rows for the same product (to add multiple components/tools)</li>
+                    <li>Leave columns empty if not needed (e.g., row with only component, no tool)</li>
+                </ul>
+                <p><strong>Example:</strong></p>
+                <pre>Product SKU,Component Number,Quantity,Tool Number,Supplier Name
+DOOR-LEFT-001,com111-809-456,1,TOOL-001,
+DOOR-LEFT-001,BOLT-M8-50,12,TOOL-002,
+DOOR-RIGHT-001,com111-809-456,1,TOOL-001,MetalWorks Ltd</pre>
+                
+                <button id="vwpm-download-product-boms-template" class="button">Download Template CSV</button>
+                
+                <form id="vwpm-import-product-boms-form" style="margin-top: 15px;">
+                    <input type="file" name="product_boms_csv" accept=".csv" required>
+                    <button type="submit" class="button button-primary">Import Product BOMs CSV</button>
+                </form>
+            </div>
+        </div>
+        
         <!-- CSV Format Help -->
         <div class="vwpm-card">
             <h2>CSV Format Guidelines</h2>
@@ -138,6 +169,21 @@ jQuery(document).ready(function($) {
         var a = document.createElement('a');
         a.href = url;
         a.download = 'components-template.csv';
+        a.click();
+    });
+    
+    $('#vwpm-download-product-boms-template').on('click', function(e) {
+        e.preventDefault();
+        var csv = 'Product SKU,Component Number,Quantity,Tool Number,Supplier Name\n';
+        csv += 'EXAMPLE-SKU-001,COM-123,1,TOOL-001,\n';
+        csv += 'EXAMPLE-SKU-001,COM-456,2,TOOL-002,\n';
+        csv += 'EXAMPLE-SKU-002,COM-123,1,,Supplier Name Here\n';
+        
+        var blob = new Blob([csv], { type: 'text/csv' });
+        var url = window.URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = 'product-boms-template.csv';
         a.click();
     });
     
@@ -222,6 +268,48 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     alert('Success! Imported ' + response.data.imported + ' components.');
+                    fileInput.value = '';
+                } else {
+                    alert('Error: ' + (response.data.message || 'Import failed'));
+                }
+            },
+            error: function() {
+                alert('Error: Server request failed');
+            },
+            complete: function() {
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    });
+    
+    // Import Product BOMs CSV
+    $('#vwpm-import-product-boms-form').on('submit', function(e) {
+        e.preventDefault();
+        
+        var fileInput = $(this).find('input[type="file"]')[0];
+        if (!fileInput.files.length) {
+            alert('Please select a CSV file to upload.');
+            return;
+        }
+        
+        var formData = new FormData();
+        formData.append('action', 'vwpm_import_product_boms');
+        formData.append('nonce', vwpm_ajax.nonce);
+        formData.append('product_boms_csv', fileInput.files[0]);
+        
+        var $button = $(this).find('button[type="submit"]');
+        var originalText = $button.text();
+        $button.prop('disabled', true).text('Importing...');
+        
+        $.ajax({
+            url: vwpm_ajax.ajax_url,
+            type: 'POST',
+            data: formData,
+            processData: false,
+            contentType: false,
+            success: function(response) {
+                if (response.success) {
+                    alert(response.data.message);
                     fileInput.value = '';
                 } else {
                     alert('Error: ' + (response.data.message || 'Import failed'));
