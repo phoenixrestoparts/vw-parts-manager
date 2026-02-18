@@ -49,12 +49,12 @@ Hydraulic Press,HP-002,Workshop B,For forming parts</pre>
             
             <div class="vwpm-import-section">
                 <h3>Import Components from CSV</h3>
-                <p>Upload a CSV file with the following columns: <code>Component Name, Component Number, Supplier Name, Price, Notes</code></p>
+                <p>Upload a CSV file with the following columns: <code>Component Name, Component Number, Location, Supplier Name, Price, Notes</code></p>
                 <p><strong>Example:</strong></p>
-                <pre>Component Name,Component Number,Supplier Name,Price,Notes
-Steel Blank Type A,com111-809-456,MetalWorks Ltd,12.50,Standard blank
-Steel Blank Type B,com111-809-456/b,MetalWorks Ltd,15.00,Reinforced version
-M8 Bolt,BOLT-M8-50,Fasteners Inc,0.25,50mm length</pre>
+                <pre>Component Name,Component Number,Location,Supplier Name,Price,Notes
+Steel Blank Type A,com111-809-456,Shelf A1,MetalWorks Ltd,12.50,Standard blank
+Steel Blank Type B,com111-809-456/b,Shelf A2,MetalWorks Ltd,15.00,Reinforced version
+M8 Bolt,BOLT-M8-50,Bin B5,Fasteners Inc,0.25,50mm length</pre>
                 
                 <p class="description"><strong>Note:</strong> The supplier name must exactly match an existing supplier in your system.</p>
                 
@@ -125,8 +125,8 @@ jQuery(document).ready(function($) {
     
     $('#vwpm-download-components-template').on('click', function(e) {
         e.preventDefault();
-        var csv = 'Component Name,Component Number,Supplier Name,Price,Notes\n';
-        csv += 'Example Component,COM-001,Example Supplier,10.00,Sample component entry\n';
+        var csv = 'Component Name,Component Number,Location,Supplier Name,Price,Notes\n';
+        csv += 'Example Component,COM-001,Shelf A1,Example Supplier,10.00,Sample component entry\n';
         
         var blob = new Blob([csv], { type: 'text/csv' });
         var url = window.URL.createObjectURL(blob);
