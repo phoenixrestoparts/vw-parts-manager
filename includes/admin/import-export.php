@@ -109,8 +109,8 @@ M8 Bolt,BOLT-M8-50,Bin B5,Fasteners Inc,0.25,50mm length</pre>
 
 <script>
 var vwpm_ajax = {
-    ajax_url: '<?php echo admin_url('admin-ajax.php'); ?>',
-    nonce: '<?php echo wp_create_nonce('vwpm_nonce'); ?>'
+    ajax_url: <?php echo json_encode(admin_url('admin-ajax.php')); ?>,
+    nonce: <?php echo json_encode(wp_create_nonce('vwpm_nonce')); ?>
 };
 
 jQuery(document).ready(function($) {
