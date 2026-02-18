@@ -272,6 +272,7 @@ class VW_Parts_Manager {
             $custom_js = "
 jQuery(document).ready(function($) {
     console.log('VWPM: Document ready');
+    var vwpmSelect2Initialized = false;
     
     function initializeSelect2() {
         console.log('VWPM: Attempting to initialize Select2');
@@ -284,6 +285,7 @@ jQuery(document).ready(function($) {
                 placeholder: 'Search for supplier or select none...',
                 allowClear: true
             });
+            vwpmSelect2Initialized = true;
         }
         
         // Component dropdowns (in BOM meta box)
@@ -349,24 +351,32 @@ jQuery(document).ready(function($) {
     initializeSelect2(); // Immediate
     
     setTimeout(function() {
-        console.log('VWPM: Delayed init (100ms)');
-        initializeSelect2();
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Delayed init (100ms)');
+            initializeSelect2();
+        }
     }, 100);
     
     setTimeout(function() {
-        console.log('VWPM: Delayed init (500ms)');
-        initializeSelect2();
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Delayed init (500ms)');
+            initializeSelect2();
+        }
     }, 500);
     
     setTimeout(function() {
-        console.log('VWPM: Delayed init (1000ms)');
-        initializeSelect2();
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Delayed init (1000ms)');
+            initializeSelect2();
+        }
     }, 1000);
     
     // Also try on window load
     $(window).on('load', function() {
-        console.log('VWPM: Window load event');
-        initializeSelect2();
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Window load event');
+            initializeSelect2();
+        }
     });
     
     // Re-initialize when adding new BOM rows
@@ -1202,11 +1212,18 @@ function recalculateSupplierTotal(supplierId) {
             if (typeof $.fn.select2 === 'undefined') {
                 console.error('VWPM: Select2 not loaded yet, waiting...');
                 
+                var checkSelect2Attempts = 0;
+                var maxAttempts = 50; // 5 seconds max (50 * 100ms)
+                
                 var checkSelect2 = setInterval(function() {
+                    checkSelect2Attempts++;
                     if (typeof $.fn.select2 !== 'undefined') {
                         clearInterval(checkSelect2);
                         console.log('VWPM: Select2 now available, initializing...');
                         initSupplierDropdown();
+                    } else if (checkSelect2Attempts >= maxAttempts) {
+                        clearInterval(checkSelect2);
+                        console.error('VWPM: Select2 failed to load after 5 seconds');
                     }
                 }, 100);
             } else {
