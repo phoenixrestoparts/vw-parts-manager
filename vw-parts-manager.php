@@ -2396,11 +2396,35 @@ function vwpm_ajax_import_tools() {
         $location = isset($row[2]) ? sanitize_text_field($row[2]) : '';
         $notes = isset($row[3]) ? sanitize_textarea_field($row[3]) : '';
         
-        $post_id = wp_insert_post(array(
-            'post_title' => $tool_name,
+        // Check if tool with this number already exists
+        $existing = get_posts(array(
             'post_type' => 'vwpm_tool',
-            'post_status' => 'publish'
+            'meta_query' => array(
+                array(
+                    'key' => '_vwpm_tool_number',
+                    'value' => $tool_number,
+                    'compare' => '='
+                )
+            ),
+            'posts_per_page' => 1,
+            'fields' => 'ids'
         ));
+        
+        if (!empty($existing)) {
+            // UPDATE existing tool
+            $post_id = $existing[0];
+            wp_update_post(array(
+                'ID' => $post_id,
+                'post_title' => $tool_name
+            ));
+        } else {
+            // CREATE new tool
+            $post_id = wp_insert_post(array(
+                'post_title' => $tool_name,
+                'post_type' => 'vwpm_tool',
+                'post_status' => 'publish'
+            ));
+        }
         
         if ($post_id) {
             update_post_meta($post_id, '_vwpm_tool_number', $tool_number);
@@ -2473,11 +2497,35 @@ function vwpm_ajax_import_components() {
             }
         }
         
-        $post_id = wp_insert_post(array(
-            'post_title' => $component_name,
+        // Check if component with this number already exists
+        $existing = get_posts(array(
             'post_type' => 'vwpm_component',
-            'post_status' => 'publish'
+            'meta_query' => array(
+                array(
+                    'key' => '_vwpm_component_number',
+                    'value' => $component_number,
+                    'compare' => '='
+                )
+            ),
+            'posts_per_page' => 1,
+            'fields' => 'ids'
         ));
+        
+        if (!empty($existing)) {
+            // UPDATE existing component
+            $post_id = $existing[0];
+            wp_update_post(array(
+                'ID' => $post_id,
+                'post_title' => $component_name
+            ));
+        } else {
+            // CREATE new component
+            $post_id = wp_insert_post(array(
+                'post_title' => $component_name,
+                'post_type' => 'vwpm_component',
+                'post_status' => 'publish'
+            ));
+        }
         
         if ($post_id) {
             update_post_meta($post_id, '_vwpm_component_number', $component_number);
