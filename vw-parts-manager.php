@@ -2352,3 +2352,197 @@ function vwpm_ajax_update_po() {
     
     wp_send_json_success( array( 'message' => 'PO updated', 'po_id' => $po_id ) );
 }
+
+// AJAX: Import Tools from CSV
+function vwpm_ajax_import_tools() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!isset($_FILES['tools_csv'])) {
+        wp_send_json_error(array('message' => 'No file uploaded'));
+    }
+    
+    $file = $_FILES['tools_csv'];
+    $handle = fopen($file['tmp_name'], 'r');
+    
+    if (!$handle) {
+        wp_send_json_error(array('message' => 'Could not read file'));
+    }
+    
+    $headers = fgetcsv($handle);
+    $imported = 0;
+    
+    while (($row = fgetcsv($handle)) !== false) {
+        if (count($row) < 2) continue;
+        
+        $tool_name = sanitize_text_field($row[0]);
+        $tool_number = sanitize_text_field($row[1]);
+        $location = isset($row[2]) ? sanitize_text_field($row[2]) : '';
+        $notes = isset($row[3]) ? sanitize_textarea_field($row[3]) : '';
+        
+        $post_id = wp_insert_post(array(
+            'post_title' => $tool_name,
+            'post_type' => 'vwpm_tool',
+            'post_status' => 'publish'
+        ));
+        
+        if ($post_id) {
+            update_post_meta($post_id, '_vwpm_tool_number', $tool_number);
+            update_post_meta($post_id, '_vwpm_location', $location);
+            update_post_meta($post_id, '_vwpm_notes', $notes);
+            $imported++;
+        }
+    }
+    
+    fclose($handle);
+    
+    wp_send_json_success(array('imported' => $imported));
+}
+
+// AJAX: Import Components from CSV
+function vwpm_ajax_import_components() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!isset($_FILES['components_csv'])) {
+        wp_send_json_error(array('message' => 'No file uploaded'));
+    }
+    
+    $file = $_FILES['components_csv'];
+    $handle = fopen($file['tmp_name'], 'r');
+    
+    if (!$handle) {
+        wp_send_json_error(array('message' => 'Could not read file'));
+    }
+    
+    global $wpdb;
+    $headers = fgetcsv($handle);
+    $imported = 0;
+    
+    while (($row = fgetcsv($handle)) !== false) {
+        if (count($row) < 2) continue;
+        
+        $component_name = sanitize_text_field($row[0]);
+        $component_number = sanitize_text_field($row[1]);
+        $location = isset($row[2]) ? sanitize_text_field($row[2]) : '';
+        $supplier_name = isset($row[3]) ? sanitize_text_field($row[3]) : '';
+        $price = isset($row[4]) ? floatval($row[4]) : 0;
+        $notes = isset($row[5]) ? sanitize_textarea_field($row[5]) : '';
+        
+        // Find supplier ID
+        $supplier_id = 0;
+        if ($supplier_name) {
+            $supplier = $wpdb->get_row($wpdb->prepare(
+                "SELECT id FROM {$wpdb->prefix}vwpm_suppliers WHERE name = %s",
+                $supplier_name
+            ));
+            if ($supplier) {
+                $supplier_id = $supplier->id;
+            }
+        }
+        
+        $post_id = wp_insert_post(array(
+            'post_title' => $component_name,
+            'post_type' => 'vwpm_component',
+            'post_status' => 'publish'
+        ));
+        
+        if ($post_id) {
+            update_post_meta($post_id, '_vwpm_component_number', $component_number);
+            update_post_meta($post_id, '_vwpm_component_location', $location);
+            update_post_meta($post_id, '_vwpm_supplier_id', $supplier_id);
+            update_post_meta($post_id, '_vwpm_price', $price);
+            update_post_meta($post_id, '_vwpm_notes', $notes);
+            
+            // Store supplier ref for quick lookup
+            if ($supplier_id) {
+                $supplier_ref = $wpdb->get_var($wpdb->prepare(
+                    "SELECT name FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d",
+                    $supplier_id
+                ));
+                update_post_meta($post_id, '_vwpm_component_supplier_ref', $supplier_ref);
+            }
+            
+            $imported++;
+        }
+    }
+    
+    fclose($handle);
+    
+    wp_send_json_success(array('imported' => $imported));
+}
+
+// AJAX: Export Tools to CSV
+function vwpm_ajax_export_tools() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    $tools = get_posts(array(
+        'post_type' => 'vwpm_tool',
+        'posts_per_page' => -1,
+        'orderby' => 'title',
+        'order' => 'ASC'
+    ));
+    
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="tools-export-' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, array('Tool Name', 'Tool Number', 'Location', 'Notes'));
+    
+    foreach ($tools as $tool) {
+        fputcsv($output, array(
+            $tool->post_title,
+            get_post_meta($tool->ID, '_vwpm_tool_number', true),
+            get_post_meta($tool->ID, '_vwpm_location', true),
+            get_post_meta($tool->ID, '_vwpm_notes', true)
+        ));
+    }
+    
+    fclose($output);
+    exit;
+}
+
+// AJAX: Export Components to CSV
+function vwpm_ajax_export_components() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    global $wpdb;
+    
+    $components = get_posts(array(
+        'post_type' => 'vwpm_component',
+        'posts_per_page' => -1,
+        'orderby' => 'title',
+        'order' => 'ASC'
+    ));
+    
+    header('Content-Type: text/csv');
+    header('Content-Disposition: attachment; filename="components-export-' . date('Y-m-d') . '.csv"');
+    
+    $output = fopen('php://output', 'w');
+    fputcsv($output, array('Component Name', 'Component Number', 'Location', 'Supplier Name', 'Price', 'Notes'));
+    
+    foreach ($components as $component) {
+        $supplier_id = get_post_meta($component->ID, '_vwpm_supplier_id', true);
+        $supplier_name = '';
+        
+        if ($supplier_id) {
+            $supplier = $wpdb->get_row($wpdb->prepare(
+                "SELECT name FROM {$wpdb->prefix}vwpm_suppliers WHERE id = %d",
+                $supplier_id
+            ));
+            if ($supplier) {
+                $supplier_name = $supplier->name;
+            }
+        }
+        
+        fputcsv($output, array(
+            $component->post_title,
+            get_post_meta($component->ID, '_vwpm_component_number', true),
+            get_post_meta($component->ID, '_vwpm_component_location', true),
+            $supplier_name,
+            get_post_meta($component->ID, '_vwpm_price', true),
+            get_post_meta($component->ID, '_vwpm_notes', true)
+        ));
+    }
+    
+    fclose($output);
+    exit;
+}
