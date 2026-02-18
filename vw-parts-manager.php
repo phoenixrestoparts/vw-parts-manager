@@ -256,19 +256,165 @@ class VW_Parts_Manager {
     }
     
     public function enqueue_admin_assets($hook) {
+        // Only enqueue on specific admin pages
         $screen = get_current_screen();
-        
-        if (strpos($hook, 'vw-parts-manager') === false && 
-            strpos($hook, 'vwpm-') === false &&
-            (!$screen || ($screen->post_type !== 'vwpm_tool' &&
-            $screen->post_type !== 'vwpm_component' &&
-            $screen->post_type !== 'product'))) {
+        if (!$screen) {
             return;
         }
         
-        // Enqueue Select2
-        wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+        if (strpos($hook, 'vw-parts-manager') === false && 
+            strpos($hook, 'vwpm-') === false &&
+            ($screen->post_type !== 'vwpm_tool' &&
+            $screen->post_type !== 'vwpm_component' &&
+            $screen->post_type !== 'product')) {
+            return;
+        }
+        
+        wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css');
         wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+        
+        // Add inline script with proper timing
+        $custom_js = "
+jQuery(document).ready(function($) {
+    // Wait for page load to ensure all elements are present
+    $(window).on('load', function() {
+        // Initialize Select2 on component selects (BOM meta box)
+        if ($('.vwpm-component-select').length) {
+            $('.vwpm-component-select').select2({
+                width: '100%',
+                placeholder: 'Search for component...',
+                matcher: function(params, data) {
+                    // If there are no search terms, return all data
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+
+                    // Skip if there is no 'text' or 'element' property
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var sku = $(data.element).data('sku');
+                    
+                    // Search in both text and SKU
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    
+                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+
+                    return null;
+                }
+            });
+        }
+        
+        // Initialize Select2 on tool selects (Required Tools meta box)
+        if ($('.vwpm-tool-select').length) {
+            $('.vwpm-tool-select').select2({
+                width: '100%',
+                placeholder: 'Search for tool...',
+                matcher: function(params, data) {
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var toolNumber = $(data.element).data('number');
+                    
+                    // Search in both text and tool number
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    
+                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+
+                    return null;
+                }
+            });
+        }
+        
+        // Initialize Select2 on product supplier select (Product Supplier meta box)
+        if ($('#vwpm_product_supplier').length) {
+            $('#vwpm_product_supplier').select2({
+                width: '100%',
+                placeholder: 'Search for supplier or select none...',
+                allowClear: true
+            });
+        }
+    });
+    
+    // Re-initialize Select2 when adding new BOM rows
+    $(document).on('click', '#vwpm-add-bom-row', function() {
+        setTimeout(function() {
+            $('.vwpm-component-select').not('.select2-hidden-accessible').select2({
+                width: '100%',
+                placeholder: 'Search for component...',
+                matcher: function(params, data) {
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var sku = $(data.element).data('sku');
+                    
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+                    return null;
+                }
+            });
+        }, 100);
+    });
+    
+    // Re-initialize Select2 when adding new tool rows  
+    $(document).on('click', '#vwpm-add-tool-row', function() {
+        setTimeout(function() {
+            $('.vwpm-tool-select').not('.select2-hidden-accessible').select2({
+                width: '100%',
+                placeholder: 'Search for tool...',
+                matcher: function(params, data) {
+                    if ($.trim(params.term) === '') {
+                        return data;
+                    }
+                    if (typeof data.text === 'undefined') {
+                        return null;
+                    }
+                    var term = params.term.toLowerCase();
+                    var text = data.text.toLowerCase();
+                    var toolNumber = $(data.element).data('number');
+                    
+                    if (text.indexOf(term) > -1) {
+                        return data;
+                    }
+                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
+                        return data;
+                    }
+                    return null;
+                }
+            });
+        }, 100);
+    });
+});
+";
+
+        wp_add_inline_script('select2', $custom_js);
         
         // Output inline CSS and JS
         add_action('admin_head', array($this, 'output_inline_css'));
@@ -347,116 +493,9 @@ class VW_Parts_Manager {
     };
     
     jQuery(document).ready(function($) {
-        // Enhanced Select2 with SKU search
-        function initComponentSelect2() {
-            $('.vwpm-component-select').select2({
-                width: '100%',
-                matcher: function(params, data) {
-                    // If there are no search terms, return all data
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-
-                    // Skip if there is no 'text' or 'element' property
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var sku = $(data.element).data('sku');
-                    
-                    // Search in both text and SKU
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    
-                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-
-                    return null;
-                }
-            });
-        }
-
-        function initToolSelect2() {
-            $('.vwpm-tool-select').select2({
-                width: '100%',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var toolNumber = $(data.element).data('number');
-                    
-                    // Search in both text and tool number
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    
-                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-
-                    return null;
-                }
-            });
-        }
-
-        // Initialize on page load
-        initComponentSelect2();
-        initToolSelect2();
-        
-        // Initialize Select2 on supplier select (product edit page)
-        $('#vwpm_product_supplier').select2({
-            width: '100%',
-            placeholder: 'Search for supplier or select none...',
-            allowClear: true
-        });
-
         // BOM Row Management
         var bomIndex = $('#vwpm-bom-rows tr').length;
         
-        $('#vwpm-add-bom-row').on('click', function(e) {
-            e.preventDefault();
-            var template = $('#vwpm-bom-row-template').html();
-            var newRow = template.replace(/INDEX/g, bomIndex);
-            $('#vwpm-bom-rows').append(newRow);
-            
-            // Initialize Select2 on the new row
-            $('#vwpm-bom-rows tr:last').find('.vwpm-component-select').select2({
-                width: '100%',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var sku = $(data.element).data('sku');
-                    
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
-            });
-            
-            bomIndex++;
-        });
-
         $(document).on('click', '.vwpm-remove-row', function(e) {
             e.preventDefault();
             $(this).closest('tr').remove();
@@ -464,39 +503,6 @@ class VW_Parts_Manager {
 
         // Tools Row Management
         var toolIndex = $('#vwpm-tools-rows tr').length;
-        
-        $('#vwpm-add-tool-row').on('click', function(e) {
-            e.preventDefault();
-            var template = $('#vwpm-tool-row-template').html();
-            var newRow = template.replace(/INDEX/g, toolIndex);
-            $('#vwpm-tools-rows').append(newRow);
-            
-            // Initialize Select2 on the new row
-            $('#vwpm-tools-rows tr:last').find('.vwpm-tool-select').select2({
-                width: '100%',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var toolNumber = $(data.element).data('number');
-                    
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
-            });
-            
-            toolIndex++;
-        });
 
         $(document).on('click', '.vwpm-remove-tool-row', function(e) {
             e.preventDefault();
