@@ -2362,6 +2362,23 @@ function vwpm_ajax_import_tools() {
     }
     
     $file = $_FILES['tools_csv'];
+    
+    // Validate file extension
+    $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if ($file_ext !== 'csv') {
+        wp_send_json_error(array('message' => 'Invalid file type. Please upload a CSV file.'));
+    }
+    
+    // Validate MIME type
+    $allowed_mime_types = array('text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel');
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime_type = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+    
+    if (!in_array($mime_type, $allowed_mime_types)) {
+        wp_send_json_error(array('message' => 'Invalid file type. Please upload a CSV file.'));
+    }
+    
     $handle = fopen($file['tmp_name'], 'r');
     
     if (!$handle) {
@@ -2407,6 +2424,23 @@ function vwpm_ajax_import_components() {
     }
     
     $file = $_FILES['components_csv'];
+    
+    // Validate file extension
+    $file_ext = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+    if ($file_ext !== 'csv') {
+        wp_send_json_error(array('message' => 'Invalid file type. Please upload a CSV file.'));
+    }
+    
+    // Validate MIME type
+    $allowed_mime_types = array('text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel');
+    $finfo = finfo_open(FILEINFO_MIME_TYPE);
+    $mime_type = finfo_file($finfo, $file['tmp_name']);
+    finfo_close($finfo);
+    
+    if (!in_array($mime_type, $allowed_mime_types)) {
+        wp_send_json_error(array('message' => 'Invalid file type. Please upload a CSV file.'));
+    }
+    
     $handle = fopen($file['tmp_name'], 'r');
     
     if (!$handle) {
