@@ -1193,7 +1193,7 @@ function recalculateSupplierTotal(supplierId) {
         ?>
         <p>
             <label for="vwpm_product_supplier">Supplier (for ready-made products):</label>
-            <select id="vwpm_product_supplier" name="vwpm_product_supplier_id" class="vwpm-supplier-select" style="width: 100%;">
+            <select id="vwpm_product_supplier" name="vwpm_product_supplier_id" style="width: 100%;">
                 <option value="">None (manufactured in-house)</option>
                 <?php foreach ($suppliers as $supplier): ?>
                     <option value="<?php echo esc_attr($supplier->id); ?>" <?php selected($supplier_id, $supplier->id); ?>>
@@ -1203,48 +1203,6 @@ function recalculateSupplierTotal(supplierId) {
             </select>
         </p>
         <p class="description">Select a supplier if this is a ready-made product you purchase complete.</p>
-        
-        <script type="text/javascript">
-        jQuery(document).ready(function($) {
-            console.log('VWPM: Product supplier meta box script loaded');
-            
-            // Make sure Select2 is loaded
-            if (typeof $.fn.select2 === 'undefined') {
-                console.error('VWPM: Select2 not loaded yet, waiting...');
-                
-                var checkSelect2Attempts = 0;
-                var maxAttempts = 50; // 5 seconds max (50 * 100ms)
-                
-                var checkSelect2 = setInterval(function() {
-                    checkSelect2Attempts++;
-                    if (typeof $.fn.select2 !== 'undefined') {
-                        clearInterval(checkSelect2);
-                        console.log('VWPM: Select2 now available, initializing...');
-                        initSupplierDropdown();
-                    } else if (checkSelect2Attempts >= maxAttempts) {
-                        clearInterval(checkSelect2);
-                        console.error('VWPM: Select2 failed to load after 5 seconds');
-                    }
-                }, 100);
-            } else {
-                initSupplierDropdown();
-            }
-            
-            function initSupplierDropdown() {
-                if ($('#vwpm_product_supplier').length && !$('#vwpm_product_supplier').hasClass('select2-hidden-accessible')) {
-                    console.log('VWPM: Initializing #vwpm_product_supplier');
-                    $('#vwpm_product_supplier').select2({
-                        width: '100%',
-                        placeholder: 'Search for supplier or select none...',
-                        allowClear: true
-                    });
-                    console.log('VWPM: Product supplier dropdown initialized successfully');
-                } else {
-                    console.log('VWPM: Product supplier dropdown already initialized or not found');
-                }
-            }
-        });
-        </script>
         <?php
     }
     
