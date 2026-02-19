@@ -256,165 +256,195 @@ class VW_Parts_Manager {
     }
     
     public function enqueue_admin_assets($hook) {
-        // Only enqueue on specific admin pages
         $screen = get_current_screen();
         if (!$screen) {
             return;
         }
         
-        if (strpos($hook, 'vw-parts-manager') === false && 
-            strpos($hook, 'vwpm-') === false &&
-            ($screen->post_type !== 'vwpm_tool' &&
-            $screen->post_type !== 'vwpm_component' &&
-            $screen->post_type !== 'product')) {
-            return;
-        }
+        // Enqueue Select2 on product edit pages and other admin pages
+        $allowed_screens = array('product', 'vwpm_component', 'vwpm_tool', 'toplevel_page_vw-parts-manager', 'manufacturing_page_vwpm-production');
         
-        wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css');
-        wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
-        
-        // Add inline script with proper timing
-        $custom_js = "
+        if (in_array($screen->id, $allowed_screens) || strpos($screen->id, 'vwpm') !== false) {
+            wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+            wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+            
+            // Add inline script - use multiple triggers to ensure it runs
+            $custom_js = "
 jQuery(document).ready(function($) {
-    // Wait for page load to ensure all elements are present
-    $(window).on('load', function() {
-        // Initialize Select2 on component selects (BOM meta box)
-        if ($('.vwpm-component-select').length) {
-            $('.vwpm-component-select').select2({
-                width: '100%',
-                placeholder: 'Search for component...',
-                matcher: function(params, data) {
-                    // If there are no search terms, return all data
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-
-                    // Skip if there is no 'text' or 'element' property
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var sku = $(data.element).data('sku');
-                    
-                    // Search in both text and SKU
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    
-                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-
-                    return null;
-                }
-            });
-        }
+    console.log('VWPM: Document ready');
+    var vwpmSelect2Initialized = false;
+    
+    function initializeSelect2() {
+        console.log('VWPM: Attempting to initialize Select2');
         
-        // Initialize Select2 on tool selects (Required Tools meta box)
-        if ($('.vwpm-tool-select').length) {
-            $('.vwpm-tool-select').select2({
-                width: '100%',
-                placeholder: 'Search for tool...',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var toolNumber = $(data.element).data('number');
-                    
-                    // Search in both text and tool number
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    
-                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-
-                    return null;
-                }
-            });
-        }
-        
-        // Initialize Select2 on product supplier select (Product Supplier meta box)
-        if ($('#vwpm_product_supplier').length) {
+        // Product Supplier dropdown (on product edit page)
+        if ($('#vwpm_product_supplier').length && !$('#vwpm_product_supplier').hasClass('select2-hidden-accessible')) {
+            console.log('VWPM: Initializing product supplier dropdown');
             $('#vwpm_product_supplier').select2({
                 width: '100%',
                 placeholder: 'Search for supplier or select none...',
                 allowClear: true
             });
+            vwpmSelect2Initialized = true;
+        }
+        
+        // Component dropdowns (in BOM meta box)
+        if ($('.vwpm-component-select').length) {
+            $('.vwpm-component-select').not('.select2-hidden-accessible').each(function() {
+                $(this).select2({
+                    width: '100%',
+                    placeholder: 'Search for component...',
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var term = params.term.toLowerCase();
+                        var text = data.text.toLowerCase();
+                        var sku = $(data.element).data('sku');
+                        
+                        if (text.indexOf(term) > -1) {
+                            return data;
+                        }
+                        if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
+                            return data;
+                        }
+                        return null;
+                    }
+                });
+            });
+        }
+        
+        // Tool dropdowns (in Required Tools meta box)
+        if ($('.vwpm-tool-select').length) {
+            $('.vwpm-tool-select').not('.select2-hidden-accessible').each(function() {
+                $(this).select2({
+                    width: '100%',
+                    placeholder: 'Search for tool...',
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var term = params.term.toLowerCase();
+                        var text = data.text.toLowerCase();
+                        var toolNumber = $(data.element).data('number');
+                        
+                        if (text.indexOf(term) > -1) {
+                            return data;
+                        }
+                        if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
+                            return data;
+                        }
+                        return null;
+                    }
+                });
+            });
+        }
+    }
+    
+    // Try initialization multiple times with different triggers
+    initializeSelect2(); // Immediate
+    
+    setTimeout(function() {
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Delayed init (100ms)');
+            initializeSelect2();
+        }
+    }, 100);
+    
+    setTimeout(function() {
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Delayed init (500ms)');
+            initializeSelect2();
+        }
+    }, 500);
+    
+    setTimeout(function() {
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Delayed init (1000ms)');
+            initializeSelect2();
+        }
+    }, 1000);
+    
+    // Also try on window load
+    $(window).on('load', function() {
+        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
+            console.log('VWPM: Window load event');
+            initializeSelect2();
         }
     });
     
-    // Re-initialize Select2 when adding new BOM rows
+    // Re-initialize when adding new BOM rows
     $(document).on('click', '#vwpm-add-bom-row', function() {
         setTimeout(function() {
-            $('.vwpm-component-select').not('.select2-hidden-accessible').select2({
-                width: '100%',
-                placeholder: 'Search for component...',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-                    if (typeof data.text === 'undefined') {
+            $('.vwpm-component-select').not('.select2-hidden-accessible').each(function() {
+                $(this).select2({
+                    width: '100%',
+                    placeholder: 'Search for component...',
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var term = params.term.toLowerCase();
+                        var text = data.text.toLowerCase();
+                        var sku = $(data.element).data('sku');
+                        
+                        if (text.indexOf(term) > -1) {
+                            return data;
+                        }
+                        if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
+                            return data;
+                        }
                         return null;
                     }
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var sku = $(data.element).data('sku');
-                    
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
+                });
             });
         }, 100);
     });
     
-    // Re-initialize Select2 when adding new tool rows  
+    // Re-initialize when adding new tool rows
     $(document).on('click', '#vwpm-add-tool-row', function() {
         setTimeout(function() {
-            $('.vwpm-tool-select').not('.select2-hidden-accessible').select2({
-                width: '100%',
-                placeholder: 'Search for tool...',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-                    if (typeof data.text === 'undefined') {
+            $('.vwpm-tool-select').not('.select2-hidden-accessible').each(function() {
+                $(this).select2({
+                    width: '100%',
+                    placeholder: 'Search for tool...',
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var term = params.term.toLowerCase();
+                        var text = data.text.toLowerCase();
+                        var toolNumber = $(data.element).data('number');
+                        
+                        if (text.indexOf(term) > -1) {
+                            return data;
+                        }
+                        if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
+                            return data;
+                        }
                         return null;
                     }
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var toolNumber = $(data.element).data('number');
-                    
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
+                });
             });
         }, 100);
     });
 });
 ";
-
-        wp_add_inline_script('select2', $custom_js);
+            
+            wp_add_inline_script('select2', $custom_js);
+        }
         
         // Output inline CSS and JS
         add_action('admin_head', array($this, 'output_inline_css'));
@@ -1173,6 +1203,48 @@ function recalculateSupplierTotal(supplierId) {
             </select>
         </p>
         <p class="description">Select a supplier if this is a ready-made product you purchase complete.</p>
+        
+        <script type="text/javascript">
+        jQuery(document).ready(function($) {
+            console.log('VWPM: Product supplier meta box script loaded');
+            
+            // Make sure Select2 is loaded
+            if (typeof $.fn.select2 === 'undefined') {
+                console.error('VWPM: Select2 not loaded yet, waiting...');
+                
+                var checkSelect2Attempts = 0;
+                var maxAttempts = 50; // 5 seconds max (50 * 100ms)
+                
+                var checkSelect2 = setInterval(function() {
+                    checkSelect2Attempts++;
+                    if (typeof $.fn.select2 !== 'undefined') {
+                        clearInterval(checkSelect2);
+                        console.log('VWPM: Select2 now available, initializing...');
+                        initSupplierDropdown();
+                    } else if (checkSelect2Attempts >= maxAttempts) {
+                        clearInterval(checkSelect2);
+                        console.error('VWPM: Select2 failed to load after 5 seconds');
+                    }
+                }, 100);
+            } else {
+                initSupplierDropdown();
+            }
+            
+            function initSupplierDropdown() {
+                if ($('#vwpm_product_supplier').length && !$('#vwpm_product_supplier').hasClass('select2-hidden-accessible')) {
+                    console.log('VWPM: Initializing #vwpm_product_supplier');
+                    $('#vwpm_product_supplier').select2({
+                        width: '100%',
+                        placeholder: 'Search for supplier or select none...',
+                        allowClear: true
+                    });
+                    console.log('VWPM: Product supplier dropdown initialized successfully');
+                } else {
+                    console.log('VWPM: Product supplier dropdown already initialized or not found');
+                }
+            }
+        });
+        </script>
         <?php
     }
     
