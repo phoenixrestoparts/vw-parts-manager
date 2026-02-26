@@ -278,14 +278,31 @@ jQuery(document).ready(function($) {
         console.log('VWPM: Attempting to initialize Select2');
         
         // Product Supplier dropdown (on product edit page)
-        if ($('#vwpm_product_supplier').length && !$('#vwpm_product_supplier').hasClass('select2-hidden-accessible')) {
-            console.log('VWPM: Initializing product supplier dropdown');
-            $('#vwpm_product_supplier').select2({
-                width: '100%',
-                placeholder: 'Search for supplier or select none...',
-                allowClear: true
+        if ($('#vwpm_product_supplier').length) {
+            $('#vwpm_product_supplier').not('.select2-hidden-accessible').each(function() {
+                console.log('VWPM: Initializing product supplier dropdown');
+                $(this).select2({
+                    width: '100%',
+                    placeholder: 'Search for supplier or select none...',
+                    allowClear: true,
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var term = params.term.toLowerCase();
+                        var text = data.text.toLowerCase();
+                        
+                        if (text.indexOf(term) > -1) {
+                            return data;
+                        }
+                        return null;
+                    }
+                });
+                vwpmSelect2Initialized = true;
             });
-            vwpmSelect2Initialized = true;
         }
         
         // Component dropdowns (in BOM meta box)
