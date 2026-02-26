@@ -296,9 +296,13 @@ jQuery(document).ready(function($) {
                         var text = data.text.toLowerCase();
                         
                         if (text.indexOf(term) > -1) {
-                            return data;
-                        }
-                        return null;
+    return data;
+}
+var name = $(data.element).text();
+if (name && String(name).toLowerCase().indexOf(term) > -1) {
+    return data;
+}
+return null;
                     }
                 });
                 vwpmSelect2Initialized = true;
@@ -1040,8 +1044,8 @@ function recalculateSupplierTotal(supplierId) {
             'Product Supplier (for ready-made items)',
             array($this, 'render_product_supplier_meta_box'),
             'product',
-            'side',
-            'default'
+            'normal',
+            'high'
         );
     }
     
