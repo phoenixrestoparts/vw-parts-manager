@@ -49,12 +49,12 @@ Hydraulic Press,HP-002,Workshop B,For forming parts</pre>
             
             <div class="vwpm-import-section">
                 <h3>Import Components from CSV</h3>
-                <p>Upload a CSV file with the following columns: <code>Component Name, Component Number, Location, Supplier Name, Price, Notes</code></p>
+                <p>Upload a CSV file with the following columns: <code>Component Name, Component Number, Supplier Name, Price, Notes</code></p>
                 <p><strong>Example:</strong></p>
-                <pre>Component Name,Component Number,Location,Supplier Name,Price,Notes
-Steel Blank Type A,com111-809-456,Shelf A1,MetalWorks Ltd,12.50,Standard blank
-Steel Blank Type B,com111-809-456/b,Shelf A2,MetalWorks Ltd,15.00,Reinforced version
-M8 Bolt,BOLT-M8-50,Bin B5,Fasteners Inc,0.25,50mm length</pre>
+                <pre>Component Name,Component Number,Supplier Name,Price,Notes
+Steel Blank Type A,com111-809-456,MetalWorks Ltd,12.50,Standard blank
+Steel Blank Type B,com111-809-456/b,MetalWorks Ltd,15.00,Reinforced version
+M8 Bolt,BOLT-M8-50,Fasteners Inc,0.25,50mm length</pre>
                 
                 <p class="description"><strong>Note:</strong> The supplier name must exactly match an existing supplier in your system.</p>
                 
@@ -70,37 +70,6 @@ M8 Bolt,BOLT-M8-50,Bin B5,Fasteners Inc,0.25,50mm length</pre>
                 <h3>Export Components to CSV</h3>
                 <p>Download all your components as a CSV file.</p>
                 <button id="vwpm-export-components" class="button button-secondary">Export Components CSV</button>
-            </div>
-        </div>
-        
-        <!-- Product BOMs Import/Export -->
-        <div class="vwpm-card">
-            <h2>Product BOMs</h2>
-            
-            <div class="vwpm-import-section">
-                <h3>Import Product BOMs from CSV</h3>
-                <p>Upload a CSV file with the following columns: <code>Product SKU, Component Number, Quantity, Tool Number, Supplier Name</code></p>
-                <p><strong>Notes:</strong></p>
-                <ul>
-                    <li>Product SKU must match an existing WooCommerce product SKU</li>
-                    <li>Component Number must match an existing component</li>
-                    <li>Tool Number must match an existing tool</li>
-                    <li>Supplier Name must match an existing supplier</li>
-                    <li>You can have multiple rows for the same product (to add multiple components/tools)</li>
-                    <li>Leave columns empty if not needed (e.g., row with only component, no tool)</li>
-                </ul>
-                <p><strong>Example:</strong></p>
-                <pre>Product SKU,Component Number,Quantity,Tool Number,Supplier Name
-DOOR-LEFT-001,com111-809-456,1,TOOL-001,
-DOOR-LEFT-001,BOLT-M8-50,12,TOOL-002,
-DOOR-RIGHT-001,com111-809-456,1,TOOL-001,MetalWorks Ltd</pre>
-                
-                <button id="vwpm-download-product-boms-template" class="button">Download Template CSV</button>
-                
-                <form id="vwpm-import-product-boms-form" style="margin-top: 15px;">
-                    <input type="file" name="product_boms_csv" accept=".csv" required>
-                    <button type="submit" class="button button-primary">Import Product BOMs CSV</button>
-                </form>
             </div>
         </div>
         
@@ -139,11 +108,6 @@ DOOR-RIGHT-001,com111-809-456,1,TOOL-001,MetalWorks Ltd</pre>
 </div>
 
 <script>
-var vwpm_ajax = {
-    ajax_url: <?php echo json_encode(admin_url('admin-ajax.php')); ?>,
-    nonce: <?php echo json_encode(wp_create_nonce('vwpm_nonce')); ?>
-};
-
 jQuery(document).ready(function($) {
     // Download sample templates
     $('#vwpm-download-tools-template').on('click', function(e) {
@@ -161,8 +125,8 @@ jQuery(document).ready(function($) {
     
     $('#vwpm-download-components-template').on('click', function(e) {
         e.preventDefault();
-        var csv = 'Component Name,Component Number,Location,Supplier Name,Price,Notes\n';
-        csv += 'Example Component,COM-001,Shelf A1,Example Supplier,10.00,Sample component entry\n';
+        var csv = 'Component Name,Component Number,Supplier Name,Price,Notes\n';
+        csv += 'Example Component,COM-001,Example Supplier,10.00,Sample component entry\n';
         
         var blob = new Blob([csv], { type: 'text/csv' });
         var url = window.URL.createObjectURL(blob);
@@ -170,158 +134,6 @@ jQuery(document).ready(function($) {
         a.href = url;
         a.download = 'components-template.csv';
         a.click();
-    });
-    
-    $('#vwpm-download-product-boms-template').on('click', function(e) {
-        e.preventDefault();
-        var csv = 'Product SKU,Component Number,Quantity,Tool Number,Supplier Name\n';
-        csv += 'EXAMPLE-SKU-001,COM-123,1,TOOL-001,\n';
-        csv += 'EXAMPLE-SKU-001,COM-456,2,TOOL-002,\n';
-        csv += 'EXAMPLE-SKU-002,COM-123,1,,Supplier Name Here\n';
-        
-        var blob = new Blob([csv], { type: 'text/csv' });
-        var url = window.URL.createObjectURL(blob);
-        var a = document.createElement('a');
-        a.href = url;
-        a.download = 'product-boms-template.csv';
-        a.click();
-    });
-    
-    // Export CSV buttons
-    $('#vwpm-export-tools').on('click', function(e) {
-        e.preventDefault();
-        window.location.href = vwpm_ajax.ajax_url + '?action=vwpm_export_tools&nonce=' + vwpm_ajax.nonce;
-    });
-    
-    $('#vwpm-export-components').on('click', function(e) {
-        e.preventDefault();
-        window.location.href = vwpm_ajax.ajax_url + '?action=vwpm_export_components&nonce=' + vwpm_ajax.nonce;
-    });
-    
-    // Import Tools CSV
-    $('#vwpm-import-tools-form').on('submit', function(e) {
-        e.preventDefault();
-        
-        var fileInput = $(this).find('input[type="file"]')[0];
-        if (!fileInput.files.length) {
-            alert('Please select a CSV file first.');
-            return;
-        }
-        
-        var formData = new FormData();
-        formData.append('action', 'vwpm_import_tools');
-        formData.append('nonce', vwpm_ajax.nonce);
-        formData.append('tools_csv', fileInput.files[0]);
-        
-        var $button = $(this).find('button[type="submit"]');
-        var originalText = $button.text();
-        $button.prop('disabled', true).text('Importing...');
-        
-        $.ajax({
-            url: vwpm_ajax.ajax_url,
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.success) {
-                    alert('Success! Imported ' + response.data.imported + ' tools.');
-                    fileInput.value = '';
-                } else {
-                    alert('Error: ' + (response.data.message || 'Import failed'));
-                }
-            },
-            error: function() {
-                alert('Error: Server request failed');
-            },
-            complete: function() {
-                $button.prop('disabled', false).text(originalText);
-            }
-        });
-    });
-    
-    // Import Components CSV
-    $('#vwpm-import-components-form').on('submit', function(e) {
-        e.preventDefault();
-        
-        var fileInput = $(this).find('input[type="file"]')[0];
-        if (!fileInput.files.length) {
-            alert('Please select a CSV file first.');
-            return;
-        }
-        
-        var formData = new FormData();
-        formData.append('action', 'vwpm_import_components');
-        formData.append('nonce', vwpm_ajax.nonce);
-        formData.append('components_csv', fileInput.files[0]);
-        
-        var $button = $(this).find('button[type="submit"]');
-        var originalText = $button.text();
-        $button.prop('disabled', true).text('Importing...');
-        
-        $.ajax({
-            url: vwpm_ajax.ajax_url,
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.success) {
-                    alert('Success! Imported ' + response.data.imported + ' components.');
-                    fileInput.value = '';
-                } else {
-                    alert('Error: ' + (response.data.message || 'Import failed'));
-                }
-            },
-            error: function() {
-                alert('Error: Server request failed');
-            },
-            complete: function() {
-                $button.prop('disabled', false).text(originalText);
-            }
-        });
-    });
-    
-    // Import Product BOMs CSV
-    $('#vwpm-import-product-boms-form').on('submit', function(e) {
-        e.preventDefault();
-        
-        var fileInput = $(this).find('input[type="file"]')[0];
-        if (!fileInput.files.length) {
-            alert('Please select a CSV file to upload.');
-            return;
-        }
-        
-        var formData = new FormData();
-        formData.append('action', 'vwpm_import_product_boms');
-        formData.append('nonce', vwpm_ajax.nonce);
-        formData.append('product_boms_csv', fileInput.files[0]);
-        
-        var $button = $(this).find('button[type="submit"]');
-        var originalText = $button.text();
-        $button.prop('disabled', true).text('Importing...');
-        
-        $.ajax({
-            url: vwpm_ajax.ajax_url,
-            type: 'POST',
-            data: formData,
-            processData: false,
-            contentType: false,
-            success: function(response) {
-                if (response.success) {
-                    alert(response.data.message);
-                    fileInput.value = '';
-                } else {
-                    alert('Error: ' + (response.data.message || 'Import failed'));
-                }
-            },
-            error: function() {
-                alert('Error: Server request failed');
-            },
-            complete: function() {
-                $button.prop('disabled', false).text(originalText);
-            }
-        });
     });
 });
 </script>
