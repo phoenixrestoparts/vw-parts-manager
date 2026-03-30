@@ -404,383 +404,70 @@ class VW_Parts_Manager {
         initComponentSelect2();
         initToolSelect2();
 
-        // Initialize Select2 on supplier dropdowns (use event delegation since it may load dynamically)
-$(document).ready(function($) {
-    function initSupplierSelect2() {
-        $('#vwpm_product_supplier').select2({
-            width: '100%',
-            matcher: function(params, data) {
-                if ($.trim(params.term) === '') {
-                    return data;
-                }
-                if (typeof data.text === 'undefined') {
-                    return null;
-                }
-                var term = params.term.toLowerCase();
-                var text = data.text.toLowerCase();
-                
-                if (text.indexOf(term) > -1) {
-                    return data;
-                }
-                return null;
-            }
-        });
-    }
-    
-    // Initialize on page load
-    if ($('#vwpm_product_supplier').length) {
-        initSupplierSelect2();
-    }
-    
-    // Also watch for dynamic loading (for Elementor)
-    $(document).on('load', '#vwpm_product_supplier', function() {
-        if (!$(this).hasClass('select2-hidden-accessible')) {
-            initSupplierSelect2();
-        }
-    });
-});
-
-        // BOM Row Management
-        var bomIndex = $('#vwpm-bom-rows tr').length;
-        
-        $('#vwpm-add-bom-row').on('click', function(e) {
-            e.preventDefault();
-            var template = $('#vwpm-bom-row-template').html();
-            var newRow = template.replace(/INDEX/g, bomIndex);
-            $('#vwpm-bom-rows').append(newRow);
-            
-            // Initialize Select2 on the new row
-            $('#vwpm-bom-rows tr:last').find('.vwpm-component-select').select2({
-                width: '100%',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-                    if (typeof data.text === 'undefined') {
+                // Initialize Select2 on supplier dropdowns - FIXED for Elementor
+        function initSupplierSelect2() {
+            console.log('VWPM: Initializing supplier Select2');
+            if ($('#vwpm_product_supplier').length) {
+                $('#vwpm_product_supplier').select2({
+                    width: '100%',
+                    matcher: function(params, data) {
+                        if ($.trim(params.term) === '') {
+                            return data;
+                        }
+                        if (typeof data.text === 'undefined') {
+                            return null;
+                        }
+                        var term = params.term.toLowerCase();
+                        var text = data.text.toLowerCase();
+                        
+                        if (text.indexOf(term) > -1) {
+                            return data;
+                        }
                         return null;
                     }
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var sku = $(data.element).data('sku');
-                    
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
-            });
-            
-            bomIndex++;
-        });
-
-        $(document).on('click', '.vwpm-remove-row', function(e) {
-            e.preventDefault();
-            $(this).closest('tr').remove();
-        });
-
-        // Tools Row Management
-        var toolIndex = $('#vwpm-tools-rows tr').length;
-        
-        $('#vwpm-add-tool-row').on('click', function(e) {
-            e.preventDefault();
-            var template = $('#vwpm-tool-row-template').html();
-            var newRow = template.replace(/INDEX/g, toolIndex);
-            $('#vwpm-tools-rows').append(newRow);
-            
-            // Initialize Select2 on the new row
-            $('#vwpm-tools-rows tr:last').find('.vwpm-tool-select').select2({
-                width: '100%',
-                matcher: function(params, data) {
-                    if ($.trim(params.term) === '') {
-                        return data;
-                    }
-                    if (typeof data.text === 'undefined') {
-                        return null;
-                    }
-                    var term = params.term.toLowerCase();
-                    var text = data.text.toLowerCase();
-                    var toolNumber = $(data.element).data('number');
-                    
-                    if (text.indexOf(term) > -1) {
-                        return data;
-                    }
-                    if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                        return data;
-                    }
-                    return null;
-                }
-            });
-            
-            toolIndex++;
-        });
-
-        $(document).on('click', '.vwpm-remove-tool-row', function(e) {
-            e.preventDefault();
-            $(this).closest('tr').remove();
-        });
-
-        // Production Calculator
-        function formatStatus(raw) {
-            if (raw === null || raw === undefined) return 'prepared';
-            raw = String(raw).trim();
-            if (raw === '' || raw === '0') return 'prepared';
-            return raw;
-        }
-
-        function fetchPos() {
-            $('#vwpm-pos-table tbody').html('<tr><td colspan="8">Loading…</td></tr>');
-            $.post(vwpm_ajax.ajax_url, {
-                action: 'vwpm_get_pos',
-                nonce: vwpm_ajax.nonce
-            }, function(res){
-                if (!res || !res.success) {
-                    $('#vwpm-pos-table tbody').html('<tr><td colspan="8">Failed to load POs</td></tr>');
-                    return;
-                }
-                var rows = res.data.pos || [];
-                if (!rows.length) {
-                    $('#vwpm-pos-table tbody').html('<tr><td colspan="8">No purchase orders found.</td></tr>');
-                    return;
-                }
-                var html = '';
-                rows.forEach(function(r){
-                    var status = formatStatus(r.status);
-                    var locked = (Number(r.is_locked) === 1);
-                    var created = r.created_at || '';
-                    var updated = r.updated_at || '';
-
-                    html += '<tr data-po-id="'+r.id+'">';
-                    html += '<td>'+ (r.po_number || '') +'</td>';
-                    html += '<td>'+ (r.supplier_name || '-') +'</td>';
-                    html += '<td>£'+ (parseFloat(r.total_cost) ? parseFloat(r.total_cost).toFixed(2) : '0.00') +'</td>';
-                    html += '<td>'+ status +'</td>';
-                    html += '<td>'+(locked ? 'Yes' : 'No')+'</td>';
-                    html += '<td>'+created+'</td>';
-                    html += '<td>'+updated+'</td>';
-                    html += '<td>';
-                    html += '<button class="button vwpm-po-view">View</button> ';
-                    html += '<button class="button vwpm-po-mark" data-status="ordered">Mark Ordered</button> ';
-                    html += '<button class="button vwpm-po-mark" data-status="received">Mark Received</button> ';
-                    html += '<button class="button vwpm-po-toggle-lock">'+(locked ? 'Unlock' : 'Lock')+'</button>';
-                    html += '</td>';
-                    html += '</tr>';
                 });
-                $('#vwpm-pos-table tbody').html(html);
-            }).fail(function(){
-                $('#vwpm-pos-table tbody').html('<tr><td colspan="8">Failed to load POs (request failed)</td></tr>');
-            });
-        }
-
-        $('#vwpm-refresh-pos').on('click', function(e) {
-            e.preventDefault();
-            fetchPos();
-        });
-
-        // Auto-load POs on page load if table exists
-        if ($('#vwpm-pos-table').length) {
-            fetchPos();
-        }
-
-        // PO quantity/checkbox changes
-        $(document).on('change', '.vwpm-po-include', function() {
-            recalculateSupplierTotal($(this).data('supplier-id'));
-        });
-
-        $(document).on('input', '.vwpm-po-qty', function() {
-            var $row = $(this).closest('tr');
-            var qty = parseFloat($(this).val()) || 0;
-            var unitPrice = parseFloat($(this).data('unit-price')) || 0;
-            var lineTotal = qty * unitPrice;
-            $row.find('.vwpm-po-line').text('£' + lineTotal.toFixed(2));
-            recalculateSupplierTotal($(this).closest('.vwpm-supplier-block').data('supplier-id'));
-        });
-
-        function recalculateSupplierTotal(supplierId) {
-            var $block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
-            var total = 0;
-            $block.find('.vwpm-po-row').each(function() {
-                if ($(this).find('.vwpm-po-include').is(':checked')) {
-                    var lineText = $(this).find('.vwpm-po-line').text().replace(/[£,]/g, '');
-                    total += parseFloat(lineText) || 0;
-                }
-            });
-            $block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
-        }
-
-        // Create PO - FIXED to prevent duplicates
-$(document).on('click', '.vwpm-create-po-btn', function(e) {
-    e.preventDefault();
-    e.stopImmediatePropagation(); // STOP EVENT BUBBLING
-    
-    var $btn = $(this);
-    
-    // Prevent double-clicking
-    if ($btn.prop('disabled')) {
-        return false;
-    }
-    
-    $btn.prop('disabled', true).text('Creating...');
-    
-    $.ajax({
-        url: vwpm_ajax.ajax_url,
-        type: 'POST',
-        data: {
-            action: 'vwpm_create_po_from_transient',
-            nonce: vwpm_ajax.nonce
-        },
-        success: function(response) {
-            if (response.success) {
-                alert('PO created successfully! PO Number: ' + response.data.po_number);
-                $btn.text('Created ✓').css('background', '#46b450');
+                console.log('VWPM: Supplier Select2 initialized successfully');
             } else {
-                alert('Error: ' + (response.data.message || 'Failed to create PO'));
-                $btn.prop('disabled', false).text('Create PO (persist to database)');
+                console.log('VWPM: Supplier select not found');
             }
-        },
-        error: function() {
-            alert('Request failed');
-            $btn.prop('disabled', false).text('Create PO (persist to database)');
         }
-    });
-    
-    return false; // PREVENT DEFAULT
-});
 
-// Save PO - UPDATED to show Create/Print buttons after saving
-$(document).on('click', '.vwpm-save-po-btn', function(e) {
-    e.preventDefault();
-    var supplierId = $(this).data('supplier-id');
-    var block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
-    var $btn = $(this);
-    
-    var items = [];
-    var tools = [];
-    
-    block.find('.vwpm-po-row').each(function() {
-        if ($(this).find('.vwpm-po-include').is(':checked')) {
-            var row = $(this);
-            items.push({
-                component_id: row.data('component-id'),
-                component_name: row.find('td').eq(1).text(),
-                component_number: row.find('td').eq(2).text(),
-                supplier_ref: row.find('td').eq(3).text(),
-                qty: parseFloat(row.find('.vwpm-po-qty').val()) || 0,
-                unit_price: parseFloat(row.find('.vwpm-po-qty').data('unit-price')) || 0,
-                qty_per_unit: parseFloat(row.find('.vwpm-po-qty').data('qty-per-unit')) || 1
+        // Initialize on page load
+        initSupplierSelect2();
+
+        // For Elementor dynamic content, watch for the metabox wrapper
+        if ($('body').hasClass('elementor-editor-active')) {
+            // Elementor - re-initialize when needed
+            $(document).on('elementor/frontend/init', function() {
+                console.log('VWPM: Elementor frontend initialized, re-initializing Select2');
+                setTimeout(initSupplierSelect2, 500);
             });
         }
-    });
 
-    // Get product info if available
-    var products = [];
-    if ($('#vwpm_product_id').length) {
-        var selectedOption = $('#vwpm_product_id option:selected');
-        products = [{
-            product_id: $('#vwpm_product_id').val(),
-            title: selectedOption.text(),
-            quantity: $('#vwpm_quantity').val()
-        }];
-    }
+        // Mutation observer for dynamic content (Elementor)
+        var observerConfig = { 
+            childList: true, 
+            subtree: true, 
+            attributes: false 
+        };
 
-    $btn.prop('disabled', true).text('Saving...');
-
-    $.ajax({
-        url: vwpm_ajax.ajax_url,
-        type: 'POST',
-        data: {
-            action: 'vwpm_save_po_selection',
-            nonce: vwpm_ajax.nonce,
-            supplier_id: supplierId,
-            items: items,
-            tools: tools,
-            products: products,
-            type: $('#vwpm_product_type').length ? $('#vwpm_product_type').val() : 'manufactured'
-        },
-        success: function(response) {
-            if (response.success) {
-                alert('PO selection saved! You can now create or print.');
-                $btn.text('Saved ✓').css('background', '#46b450');
-                
-                // Show the Create and Print buttons
-                block.find('.vwpm-create-po-btn, .vwpm-print-po-btn').show();
-            } else {
-                alert('Error: ' + (response.data.message || 'Failed to save'));
-                $btn.prop('disabled', false).text('Save Selection for Print/Create');
+        var observer = new MutationObserver(function(mutations) {
+            // Only trigger if #vwpm_product_supplier appears and doesn't have select2 applied
+            if ($('#vwpm_product_supplier').length && !$('#vwpm_product_supplier').hasClass('select2-hidden-accessible')) {
+                console.log('VWPM: Detected new supplier select in DOM, initializing');
+                initSupplierSelect2();
+                observer.disconnect(); // Stop observing after found
             }
-        },
-        error: function() {
-            alert('Request failed');
-            $btn.prop('disabled', false).text('Save Selection for Print/Create');
-        }
-    });
-});
+        });
 
-// Print PO button
-$(document).on('click', '.vwpm-print-po-btn', function(e) {
-    e.preventDefault();
-    window.open(vwpm_ajax.ajax_url.replace('admin-ajax.php', 'admin.php') + '?vwpm_print_po=1', '_blank');
-});
-
-// Add custom line to PO
-$(document).on('click', '.vwpm-add-custom-line-btn', function(e) {
-    e.preventDefault();
-    var supplierId = $(this).data('supplier-id');
-    var block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
-    var table = block.find('.vwpm-results-table tbody');
-    
-    // Prompt for custom item details
-    var itemName = prompt('Enter item name:');
-    if (!itemName) return;
-    
-    var itemNumber = prompt('Enter part/item number (optional):', '');
-    var supplierRef = prompt('Enter supplier reference (optional):', '');
-    var qty = prompt('Enter quantity:', '1');
-    var unitPrice = prompt('Enter unit price (£):', '0');
-    
-    qty = parseFloat(qty) || 1;
-    unitPrice = parseFloat(unitPrice) || 0;
-    var lineTotal = qty * unitPrice;
-    
-    // Generate a unique custom ID
-    var customId = 'custom_' + Date.now();
-    
-    // Add row to table (before the total row)
-    var row = '<tr data-component-id="' + customId + '" class="vwpm-po-row vwpm-custom-row" style="background:#fffbcc;">';
-    row += '<td style="text-align:center;"><input type="checkbox" class="vwpm-po-include" data-supplier-id="' + supplierId + '" checked></td>';
-        row += '<td>' + itemName + ' <em>(custom)</em></td>';
-    row += '<td>' + itemNumber + '</td>';
-    row += '<td>' + (supplierRef || '-') + '</td>';
-    row += '<td><input type="number" step="0.01" class="vwpm-po-qty" value="' + qty.toFixed(2) + '" style="width:100px;" data-unit-price="' + unitPrice + '"></td>';
-    row += '<td class="vwpm-po-unit">£' + unitPrice.toFixed(2) + '</td>';
-    row += '<td class="vwpm-po-line">£' + lineTotal.toFixed(2) + '</td>';
-    row += '</tr>';
-    
-    // Insert before the supplier total row
-    table.find('.vwpm-supplier-total').before(row);
-    
-    // Recalculate total
-    recalculateSupplierTotal(supplierId);
-    
-    alert('Custom line added! Remember to click "Save Selection" before creating/printing the PO.');
-});
-
-function recalculateSupplierTotal(supplierId) {
-    var block = $('.vwpm-supplier-block[data-supplier-id="' + supplierId + '"]');
-    var total = 0;
-    
-    block.find('.vwpm-po-row').each(function() {
-        if ($(this).find('.vwpm-po-include').is(':checked')) {
-            var lineText = $(this).find('.vwpm-po-line').text().replace(/[£,]/g, '');
-            total += parseFloat(lineText) || 0;
-        }
-    });
-    
-      block.find('.vwpm-supplier-total-value').text('£' + total.toFixed(2));
-}
-    });
+        // Start observing when the document is ready
+        setTimeout(function() {
+            var container = document.getElementById('vwpm_product_supplier');
+            if (!container) {
+                container = document.body; // Watch whole body if not found
+            }
+            observer.observe(container || document.body, observerConfig);
+        }, 200);
     </script>
     <?php
     }
