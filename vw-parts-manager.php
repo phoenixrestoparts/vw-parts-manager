@@ -1960,3 +1960,111 @@ function vwpm_ajax_prepare_po_for_edit() {
     
     wp_send_json_success( array( 'message' => 'PO ready for edit', 'po_id' => $po_id ) );
 }
+// AJAX: Add Supplier
+function vwpm_ajax_add_supplier() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vwpm_suppliers';
+    
+    $name = sanitize_text_field($_POST['supplier_name'] ?? '');
+    $email = sanitize_email($_POST['supplier_email'] ?? '');
+    $contact = sanitize_textarea_field($_POST['supplier_contact'] ?? '');
+    $notes = sanitize_textarea_field($_POST['supplier_notes'] ?? '');
+    
+    if (empty($name)) {
+        wp_send_json_error(array('message' => 'Supplier name is required'));
+    }
+    
+    $inserted = $wpdb->insert(
+        $table_name,
+        array(
+            'name' => $name,
+            'email' => $email,
+            'contact_details' => $contact,
+            'notes' => $notes
+        ),
+        array('%s', '%s', '%s', '%s')
+    );
+    
+    if ($inserted) {
+        wp_send_json_success(array('message' => 'Supplier added successfully', 'id' => $wpdb->insert_id));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to add supplier: ' . $wpdb->last_error));
+    }
+}
+
+// AJAX: Update Supplier
+function vwpm_ajax_update_supplier() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vwpm_suppliers';
+    
+    $supplier_id = intval($_POST['supplier_id'] ?? 0);
+    $name = sanitize_text_field($_POST['name'] ?? '');
+    $email = sanitize_email($_POST['email'] ?? '');
+    $contact = sanitize_textarea_field($_POST['contact_details'] ?? '');
+    $notes = sanitize_textarea_field($_POST['notes'] ?? '');
+    
+    if (!$supplier_id || empty($name)) {
+        wp_send_json_error(array('message' => 'Invalid supplier ID or name'));
+    }
+    
+    $updated = $wpdb->update(
+        $table_name,
+        array(
+            'name' => $name,
+            'email' => $email,
+            'contact_details' => $contact,
+            'notes' => $notes
+        ),
+        array('id' => $supplier_id),
+        array('%s', '%s', '%s', '%s'),
+        array('%d')
+    );
+    
+    if ($updated !== false) {
+        wp_send_json_success(array('message' => 'Supplier updated successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to update supplier: ' . $wpdb->last_error));
+    }
+}
+
+// AJAX: Delete Supplier
+function vwpm_ajax_delete_supplier() {
+    check_ajax_referer('vwpm_nonce', 'nonce');
+    
+    if (!current_user_can('manage_options')) {
+        wp_send_json_error(array('message' => 'Permission denied'));
+    }
+    
+    global $wpdb;
+    $table_name = $wpdb->prefix . 'vwpm_suppliers';
+    
+    $supplier_id = intval($_POST['supplier_id'] ?? 0);
+    
+    if (!$supplier_id) {
+        wp_send_json_error(array('message' => 'Invalid supplier ID'));
+    }
+    
+    $deleted = $wpdb->delete(
+        $table_name,
+        array('id' => $supplier_id),
+        array('%d')
+    );
+    
+    if ($deleted) {
+        wp_send_json_success(array('message' => 'Supplier deleted successfully'));
+    } else {
+        wp_send_json_error(array('message' => 'Failed to delete supplier: ' . $wpdb->last_error));
+    }
+}
