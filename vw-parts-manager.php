@@ -1959,8 +1959,7 @@ function vwpm_ajax_prepare_po_for_edit() {
     set_transient( 'vwpm_edit_po_' . get_current_user_id(), $po_id, HOUR_IN_SECONDS );
     
     wp_send_json_success( array( 'message' => 'PO ready for edit', 'po_id' => $po_id ) );
-}
-// AJAX: Add Supplier
+}// AJAX: Add Supplier
 function vwpm_ajax_add_supplier() {
     check_ajax_referer('vwpm_nonce', 'nonce');
     
