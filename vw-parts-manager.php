@@ -404,6 +404,26 @@ class VW_Parts_Manager {
         initComponentSelect2();
         initToolSelect2();
 
+        // Initialize Select2 on supplier dropdowns
+$('#vwpm_product_supplier').select2({
+    width: '100%',
+    matcher: function(params, data) {
+        if ($.trim(params.term) === '') {
+            return data;
+        }
+        if (typeof data.text === 'undefined') {
+            return null;
+        }
+        var term = params.term.toLowerCase();
+        var text = data.text.toLowerCase();
+        
+        if (text.indexOf(term) > -1) {
+            return data;
+        }
+        return null;
+    }
+});
+
         // BOM Row Management
         var bomIndex = $('#vwpm-bom-rows tr').length;
         
@@ -1132,8 +1152,7 @@ function recalculateSupplierTotal(supplierId) {
         ?>
         <p>
             <label for="vwpm_product_supplier">Supplier (for ready-made products):</label>
-            <select id="vwpm_product_supplier" name="vwpm_product_supplier_id" style="width: 100%;">
-                <option value="">None (manufactured in-house)</option>
+<select id="vwpm_product_supplier" name="vwpm_product_supplier_id" class="vwpm-supplier-select" style="width: 100%;">                <option value="">None (manufactured in-house)</option>
                 <?php foreach ($suppliers as $supplier): ?>
                     <option value="<?php echo esc_attr($supplier->id); ?>" <?php selected($supplier_id, $supplier->id); ?>>
                         <?php echo esc_html($supplier->name); ?>
