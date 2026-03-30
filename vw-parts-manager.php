@@ -404,24 +404,40 @@ class VW_Parts_Manager {
         initComponentSelect2();
         initToolSelect2();
 
-        // Initialize Select2 on supplier dropdowns
-$('#vwpm_product_supplier').select2({
-    width: '100%',
-    matcher: function(params, data) {
-        if ($.trim(params.term) === '') {
-            return data;
-        }
-        if (typeof data.text === 'undefined') {
-            return null;
-        }
-        var term = params.term.toLowerCase();
-        var text = data.text.toLowerCase();
-        
-        if (text.indexOf(term) > -1) {
-            return data;
-        }
-        return null;
+        // Initialize Select2 on supplier dropdowns (use event delegation since it may load dynamically)
+$(document).ready(function($) {
+    function initSupplierSelect2() {
+        $('#vwpm_product_supplier').select2({
+            width: '100%',
+            matcher: function(params, data) {
+                if ($.trim(params.term) === '') {
+                    return data;
+                }
+                if (typeof data.text === 'undefined') {
+                    return null;
+                }
+                var term = params.term.toLowerCase();
+                var text = data.text.toLowerCase();
+                
+                if (text.indexOf(term) > -1) {
+                    return data;
+                }
+                return null;
+            }
+        });
     }
+    
+    // Initialize on page load
+    if ($('#vwpm_product_supplier').length) {
+        initSupplierSelect2();
+    }
+    
+    // Also watch for dynamic loading (for Elementor)
+    $(document).on('load', '#vwpm_product_supplier', function() {
+        if (!$(this).hasClass('select2-hidden-accessible')) {
+            initSupplierSelect2();
+        }
+    });
 });
 
         // BOM Row Management
