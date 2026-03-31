@@ -404,37 +404,95 @@ class VW_Parts_Manager {
         initComponentSelect2();
         initToolSelect2();
 
-                // Initialize Select2 on supplier dropdowns - FIXED for Elementor
-        function initSupplierSelect2() {
-            console.log('VWPM: Initializing supplier Select2');
-            if ($('#vwpm_product_supplier').length) {
-                $('#vwpm_product_supplier').select2({
-                    width: '100%',
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
-                            return null;
-                        }
-                        var term = params.term.toLowerCase();
-                        var text = data.text.toLowerCase();
-                        
-                        if (text.indexOf(term) > -1) {
-                            return data;
-                        }
-                        return null;
-                    }
-                });
-                console.log('VWPM: Supplier Select2 initialized successfully');
-            } else {
-                console.log('VWPM: Supplier select not found');
-            }
+              
+// Replace lines 407-441 with this improved code:
+
+// Initialize Select2 on supplier dropdowns - IMPROVED for Elementor & dynamic loading
+$(document).ready(function($) {
+    console.log('VWPM: Initializing supplier Select2');
+    
+    function initSupplierSelect2() {
+        var $select = $('#vwpm_product_supplier');
+        
+        // Don't re-initialize if already initialized
+        if ($select.hasClass('select2-hidden-accessible')) {
+            console.log('VWPM: Supplier Select2 already initialized');
+            return;
         }
+        
+        $select.select2({
+            width: '100%',
+            allowClear: true,
+            placeholder: 'Search and select supplier...',
+            matcher: function(params, data) {
+                // If there are no search terms, return all data
+                if ($.trim(params.term) === '') {
+                    return data;
+                }
 
-        // Initialize on page load
-        initSupplierSelect2();
+                // Skip if there is no 'text' property
+                if (typeof data.text === 'undefined') {
+                    return null;
+                }
 
+                var term = params.term.toLowerCase();
+                var text = data.text.toLowerCase();
+                
+                // Match supplier name
+                if (text.indexOf(term) > -1) {
+                    return data;
+                }
+
+                return null;
+            },
+            escapeMarkup: function (markup) {
+                return markup; // Allows HTML in results
+            }
+        });
+        
+        console.log('VWPM: Supplier Select2 initialized successfully');
+    }
+    
+    // Initialize on page load
+    if ($('#vwpm_product_supplier').length) {
+        setTimeout(initSupplierSelect2, 500); // Delay to ensure DOM is ready
+    }
+    
+    // Watch for Elementor dynamic content - use Elementor API if available
+    if (typeof window.elementor !== 'undefined' && window.elementor.on) {
+        window.elementor.on('element:settings:changed', function() {
+            console.log('VWPM: Elementor content changed, reinitializing');
+            if ($('#vwpm_product_supplier').length) {
+                initSupplierSelect2();
+            }
+        });
+    }
+    
+    // Fallback: MutationObserver for other page builders (Divi, etc.)
+    if (window.MutationObserver) {
+        var observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+                if (mutation.addedNodes.length) {
+                    $.each(mutation.addedNodes, function() {
+                        if ($(this).find('#vwpm_product_supplier').length) {
+                            console.log('VWPM: New supplier dropdown detected, initializing');
+                            setTimeout(function() {
+                                initSupplierSelect2();
+                            }, 100);
+                        }
+                    });
+                }
+            });
+        });
+        
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            attributes: false,
+            characterData: false
+        });
+    }
+});
         // For Elementor dynamic content, watch for the metabox wrapper
         if ($('body').hasClass('elementor-editor-active')) {
             // Elementor - re-initialize when needed
