@@ -261,213 +261,12 @@ add_action('save_post_product', array($this, 'save_product_meta'));
             return;
         }
         
-        // LOAD ELEMENTOR COMPATIBILITY FIX FIRST
-        wp_enqueue_script('vwpm-elementor-fix', VWPM_PLUGIN_URL . 'assets/js/fix-elementor-conflict.js', array('jquery'), '1.0.0', true);
-        
         // Enqueue Select2 on product edit pages and other admin pages
         $allowed_screens = array('product', 'vwpm_component', 'vwpm_tool', 'toplevel_page_vw-parts-manager', 'manufacturing_page_vwpm-production');
         
         if (in_array($screen->id, $allowed_screens) || strpos($screen->id, 'vwpm') !== false) {
             wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
             wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
-            
-            // Add inline script - use multiple triggers to ensure it runs
-            $custom_js = "
-jQuery(document).ready(function($) {
-    console.log('VWPM: Document ready');
-    var vwpmSelect2Initialized = false;
-    
-    function initializeSelect2() {
-        console.log('VWPM: Attempting to initialize Select2');
-        
-        // Product Supplier dropdown (on product edit page)
-        if ($('#vwpm_product_supplier').length) {
-            $('#vwpm_product_supplier').not('.select2-hidden-accessible').each(function() {
-                console.log('VWPM: Initializing product supplier dropdown');
-                $(this).select2({
-                    width: '100%',
-                    placeholder: 'Search for supplier or select none...',
-                    allowClear: true,
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
-                            return null;
-                        }
-                        var term = params.term.toLowerCase();
-                        var text = data.text.toLowerCase();
-                        
-                        if (text.indexOf(term) > -1) {
-    return data;
-}
-var name = $(data.element).text();
-if (name && String(name).toLowerCase().indexOf(term) > -1) {
-    return data;
-}
-return null;
-                    }
-                });
-                vwpmSelect2Initialized = true;
-            });
-        }
-        
-        // Component dropdowns (in BOM meta box)
-        if ($('.vwpm-component-select').length) {
-            $('.vwpm-component-select').not('.select2-hidden-accessible').each(function() {
-                $(this).select2({
-                    width: '100%',
-                    placeholder: 'Search for component...',
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
-                            return null;
-                        }
-                        var term = params.term.toLowerCase();
-                        var text = data.text.toLowerCase();
-                        var sku = $(data.element).data('sku');
-                        
-                        if (text.indexOf(term) > -1) {
-                            return data;
-                        }
-                        if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                            return data;
-                        }
-                        return null;
-                    }
-                });
-            });
-        }
-        
-        // Tool dropdowns (in Required Tools meta box)
-        if ($('.vwpm-tool-select').length) {
-            $('.vwpm-tool-select').not('.select2-hidden-accessible').each(function() {
-                $(this).select2({
-                    width: '100%',
-                    placeholder: 'Search for tool...',
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
-                            return null;
-                        }
-                        var term = params.term.toLowerCase();
-                        var text = data.text.toLowerCase();
-                        var toolNumber = $(data.element).data('number');
-                        
-                        if (text.indexOf(term) > -1) {
-                            return data;
-                        }
-                        if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                            return data;
-                        }
-                        return null;
-                    }
-                });
-            });
-        }
-    }
-    
-    // Try initialization multiple times with different triggers
-    initializeSelect2(); // Immediate
-    
-    setTimeout(function() {
-        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
-            console.log('VWPM: Delayed init (100ms)');
-            initializeSelect2();
-        }
-    }, 100);
-    
-    setTimeout(function() {
-        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
-            console.log('VWPM: Delayed init (500ms)');
-            initializeSelect2();
-        }
-    }, 500);
-    
-    setTimeout(function() {
-        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
-            console.log('VWPM: Delayed init (1000ms)');
-            initializeSelect2();
-        }
-    }, 1000);
-    
-    // Also try on window load
-    $(window).on('load', function() {
-        if (!vwpmSelect2Initialized && $('#vwpm_product_supplier').length) {
-            console.log('VWPM: Window load event');
-            initializeSelect2();
-        }
-    });
-    
-    // Re-initialize when adding new BOM rows
-    $(document).on('click', '#vwpm-add-bom-row', function() {
-        setTimeout(function() {
-            $('.vwpm-component-select').not('.select2-hidden-accessible').each(function() {
-                $(this).select2({
-                    width: '100%',
-                    placeholder: 'Search for component...',
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
-                            return null;
-                        }
-                        var term = params.term.toLowerCase();
-                        var text = data.text.toLowerCase();
-                        var sku = $(data.element).data('sku');
-                        
-                        if (text.indexOf(term) > -1) {
-                            return data;
-                        }
-                        if (sku && String(sku).toLowerCase().indexOf(term) > -1) {
-                            return data;
-                        }
-                        return null;
-                    }
-                });
-            });
-        }, 100);
-    });
-    
-    // Re-initialize when adding new tool rows
-    $(document).on('click', '#vwpm-add-tool-row', function() {
-        setTimeout(function() {
-            $('.vwpm-tool-select').not('.select2-hidden-accessible').each(function() {
-                $(this).select2({
-                    width: '100%',
-                    placeholder: 'Search for tool...',
-                    matcher: function(params, data) {
-                        if ($.trim(params.term) === '') {
-                            return data;
-                        }
-                        if (typeof data.text === 'undefined') {
-                            return null;
-                        }
-                        var term = params.term.toLowerCase();
-                        var text = data.text.toLowerCase();
-                        var toolNumber = $(data.element).data('number');
-                        
-                        if (text.indexOf(term) > -1) {
-                            return data;
-                        }
-                        if (toolNumber && String(toolNumber).toLowerCase().indexOf(term) > -1) {
-                            return data;
-                        }
-                        return null;
-                    }
-                });
-            });
-        }, 100);
-    });
-});
-";
-            
-            wp_add_inline_script('select2', $custom_js);
         }
         
         // Output inline CSS and JS
@@ -547,6 +346,118 @@ return null;
     };
     
     jQuery(document).ready(function($) {
+        // Initialize Select2 on product supplier dropdown
+        if ($('#vwpm_product_supplier').length) {
+            $('#vwpm_product_supplier').select2({
+                width: '100%',
+                placeholder: 'Search for supplier or select none...',
+                allowClear: true
+            });
+        }
+        
+        // Initialize Select2 on component dropdowns
+        $('.vwpm-component-select').select2({
+            width: '100%',
+            placeholder: 'Search by SKU or name...'
+        });
+        
+        // Initialize Select2 on tool dropdowns
+        $('.vwpm-tool-select').select2({
+            width: '100%',
+            placeholder: 'Search by number or name...'
+        });
+        
+        // BOM Repeater
+        $(document).on('click', '#vwpm-add-bom-row', function(e) {
+            e.preventDefault();
+            var $rows = $('#vwpm-bom-rows');
+            var bomIndex = $rows.find('tr').length;
+            var template = $('#vwpm-bom-row-template').html();
+            template = template.replace(/INDEX/g, bomIndex);
+            $rows.append(template);
+            
+            // Initialize Select2 on new row
+            $rows.find('tr:last .vwpm-component-select').select2({
+                width: '100%',
+                placeholder: 'Search by SKU or name...'
+            });
+        });
+        
+        $(document).on('click', '.vwpm-remove-row', function(e) {
+            e.preventDefault();
+            var $row = $(this).closest('tr');
+            if ($row.find('select').hasClass('select2-hidden-accessible')) {
+                $row.find('select').select2('destroy');
+            }
+            $row.remove();
+        });
+        
+        // Tools Repeater
+        $(document).on('click', '#vwpm-add-tool-row', function(e) {
+            e.preventDefault();
+            var $rows = $('#vwpm-tools-rows');
+            var toolIndex = $rows.find('tr').length;
+            var template = $('#vwpm-tool-row-template').html();
+            template = template.replace(/INDEX/g, toolIndex);
+            $rows.append(template);
+            
+            // Initialize Select2 on new row
+            $rows.find('tr:last .vwpm-tool-select').select2({
+                width: '100%',
+                placeholder: 'Search by number or name...'
+            });
+        });
+        
+        $(document).on('click', '.vwpm-remove-tool-row', function(e) {
+            e.preventDefault();
+            var $row = $(this).closest('tr');
+            if ($row.find('select').hasClass('select2-hidden-accessible')) {
+                $row.find('select').select2('destroy');
+            }
+            $row.remove();
+        });
+        
+        // Production Calculator
+        $(document).on('click', '#vwpm-calculate-production', function(e) {
+            e.preventDefault();
+            
+            var productType = $('#vwpm_production_type').val();
+            var productId = $('#vwpm_product_id').val();
+            var quantity = $('#vwpm_quantity').val();
+            
+            if (!productId || !quantity) {
+                alert('Please select a product and enter a quantity');
+                return;
+            }
+            
+            var $button = $(this);
+            $button.prop('disabled', true).text('Calculating...');
+            
+            $.ajax({
+                url: vwpm_ajax.ajax_url,
+                type: 'POST',
+                data: {
+                    action: 'vwpm_calculate_production',
+                    nonce: vwpm_ajax.nonce,
+                    product_type: productType,
+                    product_id: productId,
+                    quantity: quantity
+                },
+                success: function(response) {
+                    if (response.success) {
+                        $('#vwpm-calculator-results').html(response.data.html).show();
+                    } else {
+                        alert('Error: ' + (response.data.message || 'Failed to calculate'));
+                    }
+                    $button.prop('disabled', false).text('Calculate Production Requirements');
+                },
+                error: function() {
+                    alert('Request failed');
+                    $button.prop('disabled', false).text('Calculate Production Requirements');
+                }
+            });
+        });
+        
         // BOM Row Management
         var bomIndex = $('#vwpm-bom-rows tr').length;
         
@@ -654,11 +565,10 @@ return null;
         // Create PO - FIXED to prevent duplicates
 $(document).on('click', '.vwpm-create-po-btn', function(e) {
     e.preventDefault();
-    e.stopImmediatePropagation(); // STOP EVENT BUBBLING
+    e.stopImmediatePropagation();
     
     var $btn = $(this);
     
-    // Prevent double-clicking
     if ($btn.prop('disabled')) {
         return false;
     }
@@ -687,7 +597,7 @@ $(document).on('click', '.vwpm-create-po-btn', function(e) {
         }
     });
     
-    return false; // PREVENT DEFAULT
+    return false;
 });
 
 // Save PO - UPDATED to show Create/Print buttons after saving
@@ -968,7 +878,7 @@ function recalculateSupplierTotal(supplierId) {
         <?php
     }
     
-   public function save_component_meta($post_id) {
+    public function save_component_meta($post_id) {
         if (!isset($_POST['vwpm_component_nonce']) || !wp_verify_nonce($_POST['vwpm_component_nonce'], 'vwpm_component_meta')) {
             return;
         }
@@ -1486,7 +1396,7 @@ public function render_product_supplier_meta_box($post) {
     public function render_purchase_orders_page() {
         include VWPM_PLUGIN_DIR . 'includes/admin/purchase-orders.php';
     }
-        public function render_custom_po_page() {
+    public function render_custom_po_page() {
         include VWPM_PLUGIN_DIR . 'includes/admin/custom-po.php';
     }
 }
