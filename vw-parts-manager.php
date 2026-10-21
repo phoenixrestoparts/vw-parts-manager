@@ -245,22 +245,49 @@ class VW_Parts_Manager {
         if (!$screen) {
             return;
         }
-        
-        $allowed_screens = array(
-            'product',
-            'vwpm_component',
-            'vwpm_tool',
-            'toplevel_page_vw-parts-manager',
-            'manufacturing_page_vwpm-production'
-        );
-        
-        if (in_array($screen->id, $allowed_screens) || strpos($screen->id, 'vwpm') !== false) {
-            wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
-            wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+
+        $is_vwpm_screen = false;
+        if (strpos($screen->id, 'vwpm') !== false || strpos($screen->id, 'vw-parts-manager') !== false) {
+            $is_vwpm_screen = true;
         }
-        
-        add_action('admin_head', array($this, 'output_inline_css'));
-        add_action('admin_footer', array($this, 'output_inline_js'));
+
+        $is_product_screen = ($screen->id === 'product' || $screen->post_type === 'product');
+        $is_custom_post_type_screen = in_array($screen->id, array('vwpm_component', 'vwpm_tool'), true);
+
+        if (!$is_vwpm_screen && !$is_product_screen && !$is_custom_post_type_screen) {
+            return;
+        }
+
+        wp_enqueue_style('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css', array(), '4.1.0');
+        wp_enqueue_script('select2', 'https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js', array('jquery'), '4.1.0', true);
+
+        wp_enqueue_script(
+            'vwpm-admin',
+            VWPM_PLUGIN_URL . 'assets/js/admin.js',
+            array('jquery', 'select2'),
+            '1.0.3',
+            true
+        );
+
+        wp_localize_script(
+            'vwpm-admin',
+            'vwpm_ajax',
+            array(
+                'ajax_url' => admin_url('admin-ajax.php'),
+                'nonce' => wp_create_nonce('vwpm_nonce'),
+            )
+        );
+
+        wp_enqueue_style(
+            'vwpm-admin',
+            VWPM_PLUGIN_URL . 'assets/css/admin.css',
+            array(),
+            '1.0.3'
+        );
+
+        if (file_exists(VWPM_PLUGIN_DIR . 'assets/css/admin.css')) {
+            wp_enqueue_style('vwpm-admin', VWPM_PLUGIN_URL . 'assets/css/admin.css', array(), '1.0.3');
+        }
     }
     
     public function output_inline_css() {
@@ -343,14 +370,22 @@ class VW_Parts_Manager {
                 });
             }
 
-            $('.vwpm-component-select').select2({
-                width: '100%',
-                placeholder: 'Search by SKU or name...'
+            $('.vwpm-component-select').each(function() {
+                if (!$(this).hasClass('select2-hidden-accessible')) {
+                    $(this).select2({
+                        width: '100%',
+                        placeholder: 'Search by SKU or name...'
+                    });
+                }
             });
 
-            $('.vwpm-tool-select').select2({
-                width: '100%',
-                placeholder: 'Search by number or name...'
+            $('.vwpm-tool-select').each(function() {
+                if (!$(this).hasClass('select2-hidden-accessible')) {
+                    $(this).select2({
+                        width: '100%',
+                        placeholder: 'Search by number or name...'
+                    });
+                }
             });
 
             $(document).on('click', '#vwpm-add-bom-row', function(e) {
@@ -361,9 +396,13 @@ class VW_Parts_Manager {
                 template = template.replace(/INDEX/g, bomIndex);
                 $rows.append(template);
 
-                $rows.find('tr:last .vwpm-component-select').select2({
-                    width: '100%',
-                    placeholder: 'Search by SKU or name...'
+                $rows.find('tr:last .vwpm-component-select').each(function() {
+                    if (!$(this).hasClass('select2-hidden-accessible')) {
+                        $(this).select2({
+                            width: '100%',
+                            placeholder: 'Search by SKU or name...'
+                        });
+                    }
                 });
             });
 
@@ -384,9 +423,13 @@ class VW_Parts_Manager {
                 template = template.replace(/INDEX/g, toolIndex);
                 $rows.append(template);
 
-                $rows.find('tr:last .vwpm-tool-select').select2({
-                    width: '100%',
-                    placeholder: 'Search by number or name...'
+                $rows.find('tr:last .vwpm-tool-select').each(function() {
+                    if (!$(this).hasClass('select2-hidden-accessible')) {
+                        $(this).select2({
+                            width: '100%',
+                            placeholder: 'Search by number or name...'
+                        });
+                    }
                 });
             });
 
@@ -772,7 +815,7 @@ class VW_Parts_Manager {
         <div id="vwpm-supplier-container" class="vwpm-supplier-box" style="padding: 15px; background: #f9f9f9; border-radius: 4px;">
             <div class="vwpm-supplier-search">
                 <label for="vwpm_supplier_search"><strong>Search & Add Supplier:</strong></label>
-                <input type="text" id="vwpm_supplier_search" class="vwpm-supplier-search-input" placeholder="Type supplier name (minimum 2 characters)..." autocomplete="off" style="width: 100%; padding: 8px; margin-top: 5px; box-sizing: border-box;">
+                <input type="text" id="vwpm_supplier_search" class="vwpm-supplier-search-input" placeholder="Type supplier name (minimum 2 characters)..." autocomplete="off" style="width: 100%; padding: 8px;">
                 <div id="vwpm_supplier_results" class="vwpm-search-results"></div>
             </div>
             
@@ -858,7 +901,7 @@ class VW_Parts_Manager {
                     $('#vwpm_supplier_results').removeClass('active').empty();
                     return;
                 }
-                $('#vwpm_supplier_results').html('<div class=\"vwpm-search-result-item\">Searching...</div>').addClass('active');
+                $('#vwpm_supplier_results').html('<div class="vwpm-search-result-item">Searching...</div>').addClass('active');
                 searchTimeout = setTimeout(function() {
                     $.ajax({
                         url: ajaxurl,
@@ -874,10 +917,10 @@ class VW_Parts_Manager {
                                 var results = response.data;
                                 var html = '';
                                 if (!results || results.length === 0) {
-                                    html = '<div class=\"vwpm-search-result-item\">No suppliers found. Check the Suppliers page in Manufacturing menu to add suppliers.</div>';
+                                    html = '<div class="vwpm-search-result-item">No suppliers found. Check the Suppliers page in Manufacturing menu to add suppliers.</div>';
                                 } else {
                                     results.forEach(function(supplier) {
-                                        html += '<div class=\"vwpm-search-result-item\" data-id=\"' + supplier.id + '\" data-name=\"' + escapeHtml(supplier.name) + '\">';
+                                        html += '<div class="vwpm-search-result-item" data-id="' + supplier.id + '" data-name="' + escapeHtml(supplier.name) + '">';
                                         html += '<strong>' + escapeHtml(supplier.name) + '</strong>';
                                         if (supplier.email) {
                                             html += '<small>' + escapeHtml(supplier.email) + '</small>';
@@ -895,12 +938,12 @@ class VW_Parts_Manager {
                                     }
                                 });
                             } else {
-                                $('#vwpm_supplier_results').html('<div class=\"vwpm-search-result-item\">Error: ' + (response.data.message || 'Failed to load suppliers') + '</div>').addClass('active');
+                                $('#vwpm_supplier_results').html('<div class="vwpm-search-result-item">Error: ' + (response.data.message || 'Failed to load suppliers') + '</div>').addClass('active');
                             }
                         },
                         error: function(xhr, status, error) {
                             console.error('AJAX Error:', error);
-                            $('#vwpm_supplier_results').html('<div class=\"vwpm-search-result-item\">Error loading suppliers. Check browser console.</div>').addClass('active');
+                            $('#vwpm_supplier_results').html('<div class="vwpm-search-result-item">Error loading suppliers. Check browser console.</div>').addClass('active');
                         }
                     });
                 }, 300);
@@ -913,11 +956,11 @@ class VW_Parts_Manager {
             });
 
             function selectSupplier(id, name) {
-                var itemHtml = '<div class=\"vwpm-supplier-selected-item\" data-id=\"' + id + '\" style=\"background: white; padding: 10px; border: 1px solid #ddd; border-radius: 3px; display: flex; align-items: center;\">' +
-                                '<span class=\"vwpm-supplier-name\" style=\"font-weight: bold; flex: 1;\">' + escapeHtml(name) + '</span>' +
-                                '<button type=\"button\" class=\"button button-small vwpm-remove-supplier\" style=\"margin-left: 10px;\">Remove</button>' +
+                var itemHtml = '<div class="vwpm-supplier-selected-item" data-id="' + id + '" style="background: white; padding: 10px; border: 1px solid #ddd; border-radius: 3px; display: flex; align-items: center;">' +
+                                '<span class="vwpm-supplier-name" style="font-weight: bold; flex: 1;">' + escapeHtml(name) + '</span>' +
+                                '<button type="button" class="button button-small vwpm-remove-supplier" style="margin-left: 10px;">Remove</button>' +
                                 '</div>' +
-                                '<input type=\"hidden\" name=\"vwpm_product_supplier_id\" value=\"' + id + '\">';
+                                '<input type="hidden" name="vwpm_product_supplier_id" value="' + id + '">';
                 $('#vwpm-supplier-item').html(itemHtml);
                 $('#vwpm_supplier_search').val('').focus();
                 $('#vwpm_supplier_results').removeClass('active').empty();
@@ -928,7 +971,7 @@ class VW_Parts_Manager {
                 $(document).off('click', '.vwpm-remove-supplier').on('click', '.vwpm-remove-supplier', function(e) {
                     e.preventDefault();
                     $('#vwpm-supplier-item').html('');
-                    $('input[name=\"vwpm_product_supplier_id\"]').remove();
+                    $('input[name="vwpm_product_supplier_id"]').remove();
                     $('#vwpm_supplier_search').val('').focus();
                 });
             }
@@ -1226,4 +1269,52 @@ function vwpm_handle_print_po() {
             <?php if ($type === 'manufactured'): ?>
                 <th class="right">Qty Per Unit</th>
             <?php endif; ?>
-            <th class="right">Total Qty</th>*
+            <th class="right">Total Qty</th>
+            <th class="right">Unit Price</th>
+            <th class="right">Line Total</th>
+        </tr>
+    </thead>
+    <tbody>
+<?php
+    foreach ($items as $item) {
+        $name = isset($item['name']) ? $item['name'] : '';
+        $part_no = isset($item['part_number']) ? $item['part_number'] : '';
+        $supplier_ref = isset($item['supplier_ref']) ? $item['supplier_ref'] : '';
+        $qty = isset($item['qty']) ? floatval($item['qty']) : 0;
+        $unit_price = isset($item['unit_price']) ? floatval($item['unit_price']) : 0;
+        $line_total = $qty * $unit_price;
+        echo '<tr>';
+        echo '<td>' . esc_html($name) . '</td>';
+        echo '<td>' . esc_html($part_no) . '</td>';
+        echo '<td>' . esc_html($supplier_ref) . '</td>';
+        if ($type === 'manufactured') {
+            $qty_per_unit = isset($item['qty_per_unit']) ? floatval($item['qty_per_unit']) : 1;
+            echo '<td class="right">' . esc_html(number_format($qty_per_unit, 2)) . '</td>';
+        }
+        echo '<td class="right">' . esc_html(number_format($qty, 2)) . '</td>';
+        echo '<td class="right">£' . esc_html(number_format($unit_price, 2)) . '</td>';
+        echo '<td class="right">£' . esc_html(number_format($line_total, 2)) . '</td>';
+        echo '</tr>';
+    }
+?>
+    </tbody>
+</table>
+
+<div class="totals">
+    <table>
+        <tr>
+            <td>Total</td>
+            <td class="right">£<?php echo esc_html(number_format($total_cost, 2)); ?></td>
+        </tr>
+    </table>
+</div>
+
+<div class="footer">
+    <p>Prepared by Phoenix Restoration Parts</p>
+</div>
+</div>
+</body>
+</html>
+<?php
+    exit;
+}
