@@ -1,49 +1,45 @@
 /**
- * Fix for Elementor hosting compatibility
- * Prevents "editPostSelector is not a function" error
+ * Fix for Elementor hosting compatibility.
+ *
+ * This script intentionally avoids overriding global jQuery AJAX behavior, which
+ * can break Elementor or other admin plugins. It only adds safe fallbacks for
+ * editor compatibility and Select2 re-init when needed.
  */
 
-jQuery(document).ready(function($) {
+jQuery(function($) {
     'use strict';
-    
-    // Define editPostSelector as a no-op function if it doesn't exist
-    // This prevents errors from undefined function calls
+
     if (typeof window.editPostSelector === 'undefined') {
         window.editPostSelector = function() {
-            console.warn('editPostSelector called but not defined');
             return false;
         };
     }
-    
-    // Prevent jQuery.fn.select2 errors by wrapping initialization
-    if (typeof $.fn.select2 !== 'undefined') {
-        console.log('Select2 is available');
-    }
-    
-    // Override any problematic AJAX calls from other plugins
-    var originalAjax = $.ajax;
-    $.ajax = function(settings) {
-        if (settings && settings.data && settings.data.action) {
-            console.log('AJAX call to action: ' + settings.data.action);
+
+    function initVwpmSelect2() {
+        if (typeof $.fn.select2 !== 'function') {
+            return;
         }
-        return originalAjax.apply(this, arguments);
-    };
-    
-    // Ensure our Select2 initialization works even on Elementor hosting
+
+        $('.vwpm-component-select, .vwpm-tool-select').each(function() {
+            var $el = $(this);
+            if (!$el.hasClass('select2-hidden-accessible')) {
+                try {
+                    $el.select2({
+                        width: '100%',
+                        placeholder: $el.is('.vwpm-component-select') ? 'Search by SKU or name...' : 'Search by number or name...'
+                    });
+                } catch (e) {
+                    // Ignore Select2 initialization errors on admin pages that do not support it.
+                }
+            }
+        });
+    }
+
     $(document).on('click', '#vwpm-add-bom-row, #vwpm-add-tool-row', function() {
         setTimeout(function() {
-            $('.vwpm-component-select, .vwpm-tool-select').not('.select2-hidden-accessible').each(function() {
-                if (typeof $(this).select2 === 'function') {
-                    try {
-                        $(this).select2({
-                            width: '100%',
-                            placeholder: $(this).is('.vwpm-component-select') ? 'Search by SKU or name...' : 'Search by number or name...'
-                        });
-                    } catch(e) {
-                        console.error('Select2 initialization failed:', e);
-                    }
-                }
-            });
+            initVwpmSelect2();
         }, 50);
     });
+
+    initVwpmSelect2();
 });
